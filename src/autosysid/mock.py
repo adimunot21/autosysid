@@ -14,9 +14,9 @@ import mujoco.rollout as mujoco_rollout
 import numpy as np
 from mujoco import sysid
 
-from autosysid.data import RawLog, zero_order_hold
+from autosysid.data import RawLog, step_averaged_hold
 from autosysid.errors import ConfigError
-from autosysid.excitation import chirp, step_train, triangle
+from autosysid.excitation import PROTOCOL_PARTS, chirp, protocol_signal
 from autosysid.model import JointDynamics, apply_dynamics, load_spec, read_dynamics, sensor_name
 
 MINI_ARM_XML = Path(__file__).parent / "assets" / "mini_arm.xml"
@@ -76,7 +76,7 @@ class MockArm:
             name = model.actuator(actuator_id).name
             column = self.joint_names.index(name)
             delay = self.delays_s.get(name, 0.0)
-            ctrl[:, actuator_id] = zero_order_hold(sim_times - delay, relative, target_rad[:, column])
+            ctrl[:, actuator_id] = step_averaged_hold(sim_times, relative + delay, target_rad[:, column])
 
         model_order = [self.joint_names.index(model.joint(i).name) for i in range(model.njnt)]
         initial = sysid.create_initial_state(model, target_rad[0][model_order])
@@ -109,22 +109,13 @@ def record_protocol(
     Each part exposes different parameters (docs/data-contract.md section 4): ramps -> friction/bias, chirp -> delay and
     tracking dynamics, steps -> kv (speed plateau) and armature (initial acceleration). Other joints hold at zero.
     """
-    recipes = {
-        "r": (16.0, "ramp", lambda t: triangle(t, 0.08, 8.0)),
-        "c": (15.0, "chirp", lambda t: chirp(t, 0.1, 1.5, 0.2, taper_s=1.5)),
-        "s": (
-            14.0,
-            "steps",
-            lambda t: step_train(t, np.array([0.3, -0.3, 0.3, -0.3, 0.15, -0.15, 0.0]), 2.0, 2.0),
-        ),
-    }
     column = arm.joint_names.index(joint)
     logs = []
     for part in parts:
-        duration_s, stage, signal = recipes[part]
+        stage, duration_s = PROTOCOL_PARTS[part]
         times = jittered_times(duration_s * scale, rate_hz, arm.settings.timing_jitter_s, rng)
         targets = np.zeros((len(times), len(arm.joint_names)))
-        targets[:, column] = signal(times)
+        targets[:, column] = protocol_signal(part, times)
         logs.append(arm.record(times, targets, stage=stage))
     return logs
 

@@ -97,3 +97,57 @@ Verified against the real SO-101 model (`scene.xml` -> `<include so101_new_calib
 - Latency (`delay_s`) has no MJCF representation; it is written to `<out>.calibration.json` together with 95% CIs, costs and
   the fit config. The JSON uses file names, not absolute paths.
 - Output must be in the same directory as the source (relative `meshdir` and includes keep working without copying 16 MB of meshes).
+
+## 6. Hardware layer and record -> fit consistency (Phase 4)
+
+Everything here was verified against `MockBus` (physics-backed, fault-injectable) and the `FeetechBus` wiring against a fake
+`scservo_sdk`; **no port was opened and no register written**. What still has to be checked on the real arm is marked (Phase 6).
+
+### 6.1 Bus facts the code relies on
+- Sync-read block `Present_Position..Present_Temperature`, addr 56, 8 bytes: position(2) velocity(2) load(2) voltage(1, 0.1 V) temperature(1).
+  Goal_Position addr 42 (2 B, little-endian), Torque_Enable 40, Acceleration 41, Torque_Limit 48 (2 B). Only `torque_limit` and
+  `acceleration` (both SRAM, volatile) are writable through the bus API; EEPROM registers are unreachable by design.
+- `Present_Position` is not sign-encoded. Velocity (sign bit 15) and load (sign bit 10) follow LeRobot's table; **units and signs under
+  motion are unverified (Phase 6)** and no watchdog uses them. Tracking error is the stall/collision proxy.
+- Tick <-> radian: LeRobot homing makes the calibration pose read 2047 ticks, and the MJCF zero is that pose, so
+  `rad = (ticks - 2047) * 2*pi/4096`. (Section 1 said "range mid"; the ranges are not symmetric about 2047, e.g. pan 709..3436, and
+  homing semantics are the better source.) **Verify with a hand-posed arm (Phase 6).**
+- `FeetechBus.open()` refuses a port another process holds (scan of `/proc/*/fd`), pings every servo, checks model 777 and
+  position mode, and writes nothing.
+
+### 6.2 Safety behaviour (all exercised with injected faults)
+- Limiter: soft limits (80% of calibrated range), rate cap, acceleration cap, braking-aware so a stopped target is not overshot.
+- Watchdogs: temperature, supply voltage, calibrated-range excursion, tracking error, late tick, sustained read failure.
+- A trip holds, returns to the start pose at 0.3 rad/s, then releases torque and restores registers. **With communication lost
+  torque is left ON** (the servos hold the last goal): dropping the arm is worse than holding it.
+- Ctrl-C only sets a flag; the loop stops at the next tick through the same path.
+
+### 6.3 Findings that changed the design (each has a regression test)
+1. **The safety Torque_Limit changes the plant.** At 35% the servo clamps at ~1.2 N.m instead of 3.35, so the same excitation
+   saturates most of the time. The recorder stores `torque_scale` per joint in every log; the fit scales `forcerange` to match
+   (`model.scale_force_limits`) and pre-flight simulates the reduced limit. *Assumes* Torque_Limit scales max torque linearly (Phase 6).
+2. **The goal's acceleration cap must not shape the excitation.** Armature is only visible when the goal changes faster than the
+   servo can accelerate (~Tmax/J, about 150 rad/s^2). A 20 rad/s^2 cap (the first bring-up guess) made steps unsaturating and armature
+   unidentifiable (fit pinned it at its bound). Default is now 400 rad/s^2 (a 0 -> 2 rad/s change in one 10 ms tick); safety rests on
+   the rate cap, soft limits, torque limit and tracking watchdog.
+3. **Sub-step command timing was a systematic misfit.** MuJoCo applies one control value per 2 ms step. Sampling the zero-order hold at
+   the step start moves every command edge to the next boundary (uniform 0-2 ms, arbitrary phase against the log clock); parameters
+   absorbed it (armature to its bound, delay +2 ms). `data.step_averaged_hold` averages the hold over each step. Phase 2 missed this
+   because its mock plant shared the fit's grid ("inverse crime"); the bus plant has an independent clock.
+4. **A finer plant than the fit model is not recoverable as "truth".** With a 0.5 ms plant and the 2 ms fit model the integrator
+   error is absorbed by the parameters (armature 0.3x). That is what "make *this* simulation match" should do, so the calibrated
+   values are effective values *for the MJCF's timestep*; the mock bus uses the model's own step so parameters can be compared.
+5. **Confidence intervals are not trustworthy when the actuator is saturated or sub-tick accurate.** FD Jacobians there are
+   non-smooth: kp reported "+-0%" while 40% off. Rules now: CIs come from the full (unpinned) fit; flagged parameters are pinned only
+   to produce a self-consistent exported set; and the arbiter of a calibration is **held-out prediction error**
+   (`optimizer.validate_joint`), not parameter agreement. kp, kv and friction are weakly observable at 1.5 mrad encoder resolution
+   against a 3.4 mrad linear band; damping, armature and delay are what the data pins down.
+6. Mock-bus read sampling returned a state up to one step stale (+1 ms apparent delay); fixed by stepping one `dt` past the sample.
+
+### 6.4 Result of the record -> fit -> validate chain on the mock bus
+`tests/test_pipeline_e2e.py` (slow, ~90 s): plan -> pre-flight -> safety session -> recorder -> MockBus (26 ms delay, 12-bit
+quantization, 0.3-tick read noise, wake-up jitter, torque limit 0.7) -> fit on stage 2 -> validate on the held-out stage-3 multisine.
+Measured: cost 1.26x the quantization floor, delay 26.20 ms (truth 26.0), **held-out RMS 0.55 mrad vs 2.7 mrad for the nominal model**
+(4.9x better, about a third of one encoder tick). Parameters vs truth: kv 0.99, damping 0.90, armature 0.89, kp 1.31, friction 0.21.
+Friction is the one the CI got wrong (it was not flagged): its 0.05 N.m is invisible next to a 3.35 N.m clamp, which is exactly
+why held-out error, not parameter agreement, is the acceptance criterion.

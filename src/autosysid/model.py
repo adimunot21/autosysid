@@ -84,6 +84,22 @@ def _require_joint_and_actuator(spec: mujoco.MjSpec, joint: str) -> None:
         raise DataError(f"actuator '{joint}' is not a <position> actuator (gain/bias do not match kp/kv form)")
 
 
+def scale_force_limits(spec: mujoco.MjSpec, scales: dict[str, float]) -> None:
+    """Multiply each named actuator's `forcerange` by `scales[name]` (the servo `Torque_Limit` as a fraction of full).
+
+    A reduced Torque_Limit changes the PLANT the data came from (the servo saturates earlier), so a fit must use the
+    same clamp. Assumes the register scales the maximum torque linearly - to be verified on hardware (Phase 6).
+    """
+    for name, scale in scales.items():
+        actuator = spec.actuator(name)
+        if actuator is None:
+            raise DataError(f"no actuator '{name}' to scale")
+        if not 0.0 < scale <= 1.0:
+            raise DataError(f"torque scale for '{name}' must be in (0, 1], got {scale}")
+        low, high = actuator.forcerange
+        actuator.forcerange = [low * scale, high * scale]
+
+
 def read_dynamics(spec: mujoco.MjSpec, joint: str) -> JointDynamics:
     """Effective dynamics of `joint` as the compiled model sees them (class defaults resolved)."""
     _require_joint_and_actuator(spec, joint)

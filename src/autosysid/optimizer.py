@@ -21,15 +21,16 @@ import numpy as np
 from mujoco import sysid
 
 from autosysid.config import FitConfig
-from autosysid.data import RawLog, build_model_sequences
+from autosysid.data import RawLog, build_model_sequences, torque_scales
 from autosysid.errors import DataError
 from autosysid.logging_utils import get_logger
-from autosysid.model import JointDynamics, load_spec, read_dynamics, sensor_name, set_joint_scalar
+from autosysid.model import JointDynamics, load_spec, read_dynamics, scale_force_limits, sensor_name, set_joint_scalar
 
 log = get_logger("optimizer")
 
 # Layout of the optimizer vector when every parameter is free (one scalar Parameter each).
 PARAMETER_NAMES: tuple[str, ...] = ("kp", "kv", "damping", "frictionloss", "armature", "delay")
+DYNAMICS_NAMES: tuple[str, ...] = PARAMETER_NAMES[:-1]
 _STAGE_ONE_FREE = {"damping", "armature", "delay"}  # smooth, nearly linear parameters: pin down timing + inertia first
 
 
@@ -80,6 +81,7 @@ class _JointProblem:
     def __init__(self, xml_path: Path, logs: Sequence[RawLog], joint: str, config: FitConfig) -> None:
         self.joint, self.config, self.logs = joint, config, list(logs)
         self.spec = load_spec(xml_path, sensed_joints=(joint,), disable_contacts=config.disable_contacts)
+        scale_force_limits(self.spec, torque_scales(self.logs))  # the plant that produced the data, not the datasheet
         self.nominal = read_dynamics(self.spec, joint)
         sequences = build_model_sequences(self.spec, self.logs, joint)
         floor, n_samples = _noise_model(self.logs, joint, config)
@@ -248,16 +250,15 @@ def fit_joint(xml_path: str | Path, logs: Sequence[RawLog], joint: str, config: 
     )
     values = _values(params)
     dynamics_unid = [name for name in unidentifiable if name != "delay"]
-    if dynamics_unid and len(dynamics_unid) < 5:
-        # Refit the rest with the unidentified parameters pinned at nominal so the reported set is self-consistent.
+    if dynamics_unid:
+        # Re-estimate the rest with the unidentified parameters pinned at nominal so the exported set is self-consistent
+        # (it reproduces the data). The CIs reported stay those of the FULL fit: intervals conditional on a wrong pin
+        # would be overconfident (Phase 4: damping/armature "+-0%" while 3x off).
         pinned = {**values, **{name: 1.0 for name in dynamics_unid}}
         params = problem.make_params(pinned, all_names - set(dynamics_unid))
         params, result = problem.optimize(params)
         cost = problem.cost(params)
         values = _values(params)
-        confidence = _confidence(problem, params, result, all_names - set(dynamics_unid))
-        for name in dynamics_unid:
-            confidence[name] = float("inf")
     fitted = problem.nominal.scaled({name: values[name] for name in PARAMETER_NAMES if name != "delay"})
     return JointFit(
         joint=joint,
@@ -281,3 +282,55 @@ def fit_all(
     if not joints:
         raise DataError("no joints to fit")
     return {joint: fit_joint(xml_path, logs, joint, config) for joint in joints}
+
+
+@dataclass(frozen=True)
+class Validation:
+    """Prediction error of one joint on data that was NOT used to fit it. The fitted model is judged by how well it
+    predicts unseen motion, not by how close individual parameters are to anything."""
+
+    joint: str
+    rms_nominal_rad: float  # MJCF as given
+    rms_fitted_rad: float  # with fitted dynamics and delay
+    n_samples: int
+
+    @property
+    def improvement(self) -> float:
+        return self.rms_nominal_rad / self.rms_fitted_rad if self.rms_fitted_rad > 0 else float("inf")
+
+
+def validate_joint(
+    xml_path: str | Path, fit: JointFit, logs: Sequence[RawLog], config: FitConfig | None = None
+) -> Validation:
+    """RMS position error (radians) of `fit.joint` on held-out `logs`, for the nominal model and the fitted one.
+
+    Both models get the same delay treatment (nominal: `config.init_delay_s`) so the comparison is about dynamics.
+    """
+    config = config or FitConfig()
+    squared = {"nominal": 0.0, "fitted": 0.0}
+    n_samples = 0
+    for held_out in logs:
+        problem = _JointProblem(Path(xml_path), [held_out], fit.joint, config)
+        window = held_out.times - held_out.times[0] >= config.max_delay_s
+        norm_scale = float(np.linalg.norm(held_out.measured_rad[window, held_out.column(fit.joint)])) / np.sqrt(2)
+        candidates = {
+            "nominal": {
+                **{name: 1.0 for name in PARAMETER_NAMES if name != "delay"},
+                "delay": config.init_delay_s * 1e3,
+            },
+            "fitted": {
+                **{name: getattr(fit.dynamics, name) / getattr(fit.nominal, name) for name in DYNAMICS_NAMES},
+                "delay": fit.delay_s * 1e3,
+            },
+        }
+        for label, start in candidates.items():
+            params = problem.make_params(start, set(PARAMETER_NAMES))
+            residual = np.concatenate([np.ravel(r) for r in problem.data_residual_fn(params.as_vector(), params)[0]])
+            squared[label] += float(np.sum((norm_scale * residual) ** 2))
+        n_samples += int(np.sum(window))
+    return Validation(
+        fit.joint,
+        float(np.sqrt(squared["nominal"] / n_samples)),
+        float(np.sqrt(squared["fitted"] / n_samples)),
+        n_samples,
+    )

@@ -90,3 +90,15 @@ def test_fit_recovers_known_parameters(make_logs, truth):
     ci = result.relative_ci["frictionloss"]
     assert friction_error < 0.3 or ci > friction_error
     assert min(result.attempt_costs) == pytest.approx(result.cost)
+
+
+def test_validation_scores_a_correct_model_far_better_than_the_nominal_one(make_logs, truth):
+    from autosysid.model import load_spec, read_dynamics
+    from autosysid.optimizer import JointFit, validate_joint
+
+    nominal = read_dynamics(load_spec(MINI_ARM_XML), JOINT)
+    fit = JointFit(JOINT, nominal, truth, TRUE_DELAY_S, {}, (), 1.0, 1.0, True, (1.0,), 0.0)
+    _, held_out = make_logs(seed=7, parts="c", scale=0.6)
+    result = validate_joint(MINI_ARM_XML, fit, held_out)
+    assert result.rms_fitted_rad < 0.0015, "a correct model should be within ~1 tick"
+    assert result.improvement > 5 and result.n_samples > 500

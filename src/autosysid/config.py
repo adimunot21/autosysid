@@ -39,13 +39,17 @@ class SafetyLimits:
 
     soft_limit_fraction: float = 0.8  # use the central 80% of the calibrated range; keeps clear of mechanical stops
     max_goal_rate_rad_s: float = 2.0  # bring-up: ~115 deg/s cap on commanded velocity
-    max_goal_accel_rad_s2: float = 20.0  # bring-up: limits step-like commands that would shock the plastic brackets
+    # bring-up. NOT a shaping limit: armature is only visible when the goal's speed changes faster than the servo can
+    # accelerate (Tmax/J ~ 150 rad/s^2), so this must stay high enough for a 2 rad/s change in one tick (Phase 4).
+    # Safety comes from the rate cap, soft limits, torque limit and the tracking watchdog; this is a net against bugs.
+    max_goal_accel_rad_s2: float = 400.0  # = 2 x rate cap / 10 ms tick: an instant 0 -> 2 rad/s change passes
     torque_limit_fraction: float = 0.35  # fraction of the 1000-count Torque_Limit; bring-up
     max_temperature_c: int = 55  # bring-up: servos idle at ~23-28 C; abort well before thermal protection
     min_voltage_v: float = 10.5  # supply reads 12.0 V; a sag below this means the PSU is struggling
     max_tracking_error_rad: float = 0.5  # |goal - present| beyond this means stall/collision or a runaway
     max_loop_jitter_s: float = 0.02  # a gap this large (2 periods at 100 Hz) means the control loop stalled
     comm_timeout_s: float = 0.1  # consecutive failed reads for this long => safe stop
+    safe_stop_rate_rad_s: float = 0.3  # bring-up: slow return to the start pose after a trip (~17 deg/s)
 
     def __post_init__(self) -> None:
         _require(0.0 < self.soft_limit_fraction <= 1.0, "soft_limit_fraction must be in (0, 1]")
@@ -57,6 +61,7 @@ class SafetyLimits:
         _require(self.max_tracking_error_rad > 0, "max_tracking_error_rad must be > 0")
         _require(self.max_loop_jitter_s > 0, "max_loop_jitter_s must be > 0")
         _require(self.comm_timeout_s > 0, "comm_timeout_s must be > 0")
+        _require(0.0 < self.safe_stop_rate_rad_s <= self.max_goal_rate_rad_s, "safe_stop_rate_rad_s out of range")
 
 
 @dataclass(frozen=True)

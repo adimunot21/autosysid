@@ -73,24 +73,73 @@ def step_train(
     hold_s: float,
     max_rate_rad_s: float,
     center_rad: float = 0.0,
+    max_accel_rad_s2: float | None = None,
 ) -> np.ndarray:
     """Goal moves to each level in turn (held `hold_s`), slew-limited to `max_rate_rad_s`; starts at center.
 
     The slew limit is the same one the safety layer enforces on hardware, so what the model sees here is what the
     arm will be asked to do. Large levels briefly saturate the actuator, which is what makes kv and armature visible.
+    With `max_accel_rad_s2` the profile is also acceleration-limited (trapezoidal velocity, braking before
+    each level), so
+    it is already admissible for the safety limiter, which would otherwise lag a corner and overshoot the level.
     """
     times = np.asarray(times, dtype=float)
     levels = np.asarray(levels_rad, dtype=float)
     if hold_s <= 0 or max_rate_rad_s <= 0 or levels.size == 0:
         raise ConfigError("need hold_s > 0, max_rate_rad_s > 0 and at least one level")
+    if max_accel_rad_s2 is not None and max_accel_rad_s2 <= 0:
+        raise ConfigError("max_accel_rad_s2 must be > 0")
     elapsed = times - times[0]
     raw = center_rad + levels[np.minimum((elapsed // hold_s).astype(int), levels.size - 1)]
     goal = np.empty_like(raw)
     goal[0] = center_rad
+    velocity = 0.0
     for i in range(1, len(raw)):
-        step = max_rate_rad_s * (times[i] - times[i - 1])
-        goal[i] = goal[i - 1] + np.clip(raw[i] - goal[i - 1], -step, step)
+        dt = times[i] - times[i - 1]
+        error = raw[i] - goal[i - 1]
+        if max_accel_rad_s2 is None:
+            goal[i] = goal[i - 1] + np.clip(error, -max_rate_rad_s * dt, max_rate_rad_s * dt)
+            continue
+        braking_speed = np.sqrt(
+            2.0 * 0.5 * max_accel_rad_s2 * abs(error)
+        )  # half the cap for braking: ticks are discrete
+        wanted = np.sign(error) * min(abs(error) / dt, max_rate_rad_s, braking_speed)
+        velocity = np.clip(wanted, velocity - max_accel_rad_s2 * dt, velocity + max_accel_rad_s2 * dt)
+        goal[i] = goal[i - 1] + velocity * dt
     return goal
+
+
+# The three-part single-joint recipe (docs/data-contract.md section 4): part -> (stage name, nominal duration in s).
+# r = slow ramps (friction, bias), c = unsaturated chirp (delay, tracking),
+# s = slew-limited saturating steps (kv, armature).
+PROTOCOL_PARTS: dict[str, tuple[str, float]] = {"r": ("ramp", 16.0), "c": ("chirp", 15.0), "s": ("steps", 14.0)}
+_STEP_LEVELS_RAD = np.array([0.3, -0.3, 0.3, -0.3, 0.15, -0.15, 0.0])
+
+
+def protocol_signal(
+    part: str,
+    times: np.ndarray,
+    amplitude_scale: float = 1.0,
+    max_rate_rad_s: float = 2.0,
+    max_accel_rad_s2: float | None = None,
+) -> np.ndarray:
+    """Excitation (offset from the center pose, radians) for one part of the recipe.
+
+    Amplitude and step slew rate scale together; `max_accel_rad_s2` makes the steps admissible for the safety
+    limiter."""
+    if part not in PROTOCOL_PARTS:
+        raise ConfigError(f"unknown protocol part '{part}'; valid: {sorted(PROTOCOL_PARTS)}")
+    if part == "r":
+        return triangle(times, 0.08 * amplitude_scale, 8.0)
+    if part == "c":
+        return chirp(times, 0.1, 1.5, 0.2 * amplitude_scale, taper_s=1.5)
+    return step_train(
+        times,
+        _STEP_LEVELS_RAD * amplitude_scale,
+        2.0,
+        max_rate_rad_s * amplitude_scale,
+        max_accel_rad_s2=max_accel_rad_s2,
+    )
 
 
 if __name__ == "__main__":
