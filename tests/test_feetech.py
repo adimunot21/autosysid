@@ -193,3 +193,16 @@ def test_closed_bus_refuses_io(bus):
     bus.close()
     with pytest.raises(HardwareError, match="not open"):
         bus.read_state()
+
+
+def test_open_turns_sdk_exceptions_into_hardware_errors(sdk, monkeypatch):
+    """Regression: scservo's PortHandler.openPort lets pyserial's SerialException escape instead of returning False."""
+    monkeypatch.setattr(feetech, "port_users", lambda device: [])
+
+    class Exploding(sdk.PortHandler):
+        def openPort(self):
+            raise OSError("could not open port /dev/fake: No such file or directory")
+
+    sdk.PortHandler = Exploding
+    with pytest.raises(HardwareError, match="cannot open /dev/fake"):
+        FeetechBus("/dev/fake", 1_000_000, CALIBRATION, sdk=sdk).open()

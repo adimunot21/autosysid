@@ -16,12 +16,12 @@ import numpy as np
 
 from autosysid.config import RecordConfig
 from autosysid.data import RawLog
-from autosysid.errors import HardwareError, SafetyViolation
+from autosysid.errors import Aborted, HardwareError, SafetyViolation
 from autosysid.hardware.bus import ServoBus
 from autosysid.hardware.calibration import ArmCalibration
 from autosysid.hardware.clock import Clock, RealClock
 from autosysid.hardware.safety import GoalLimiter, SafetyMonitor, SafetySession
-from autosysid.hardware.trajectories import Segment, preflight
+from autosysid.hardware.trajectories import PreflightReport, Segment, preflight
 from autosysid.logging_utils import get_logger
 
 log = get_logger("recorder")
@@ -44,7 +44,11 @@ class Recorder:
         return self.calibration.ticks_to_rad(self.bus.read_state().position_ticks)
 
     def run(
-        self, plan: list[Segment], xml_path: str | Path | None = None, progress: Progress | None = None
+        self,
+        plan: list[Segment],
+        xml_path: str | Path | None = None,
+        progress: Progress | None = None,
+        confirm: Callable[[PreflightReport], bool] | None = None,
     ) -> list[RawLog]:
         """Execute `plan` and return one log per segment. With `xml_path`, runs the simulation pre-flight first and
         refuses to move the arm if it fails."""
@@ -54,6 +58,8 @@ class Recorder:
             log.info("pre-flight:\n%s", report.summary())
             if not report.ok:
                 raise SafetyViolation("pre-flight failed; nothing was moved:\n" + report.summary())
+            if confirm is not None and not confirm(report):
+                raise Aborted("declined by operator; nothing was moved")
         logs: list[RawLog] = []
         with SafetySession(self.bus, self.calibration, limits, self.rate_hz, self.clock) as session:
             lower, upper = self.calibration.soft_limits_rad(limits.soft_limit_fraction)

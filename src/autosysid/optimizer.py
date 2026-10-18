@@ -48,6 +48,41 @@ class JointFit:
     attempt_costs: tuple[float, ...]  # data cost of every start; the spread shows how multi-modal the problem was
     seconds: float
 
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-safe: non-finite CIs (unidentified directions) are stored as null."""
+        return {
+            "joint": self.joint,
+            "nominal": self.nominal.to_dict(),
+            "dynamics": self.dynamics.to_dict(),
+            "delay_s": self.delay_s,
+            "relative_ci": {k: (float(v) if np.isfinite(v) else None) for k, v in self.relative_ci.items()},
+            "unidentifiable": list(self.unidentifiable),
+            "cost": self.cost,
+            "noise_floor": self.noise_floor,
+            "accepted": self.accepted,
+            "attempt_costs": list(self.attempt_costs),
+            "seconds": self.seconds,
+        }
+
+    @classmethod
+    def from_dict(cls, raw: dict[str, Any]) -> JointFit:
+        try:
+            return cls(
+                joint=raw["joint"],
+                nominal=JointDynamics(**raw["nominal"]),
+                dynamics=JointDynamics(**raw["dynamics"]),
+                delay_s=float(raw["delay_s"]),
+                relative_ci={k: (float("inf") if v is None else float(v)) for k, v in raw["relative_ci"].items()},
+                unidentifiable=tuple(raw["unidentifiable"]),
+                cost=float(raw["cost"]),
+                noise_floor=float(raw["noise_floor"]),
+                accepted=bool(raw["accepted"]),
+                attempt_costs=tuple(raw["attempt_costs"]),
+                seconds=float(raw["seconds"]),
+            )
+        except (KeyError, TypeError) as error:
+            raise DataError(f"malformed fit record: {error!r}") from error
+
 
 def _noise_model(logs: Sequence[RawLog], joint: str, config: FitConfig) -> tuple[float, int]:
     """(expected cost floor from encoder quantization, number of residual samples)."""

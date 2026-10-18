@@ -145,7 +145,9 @@ def test_preflight_uses_the_reduced_torque_limit_the_arm_will_run_with(calibrati
     """Finding (Phase 4): the 35% bring-up Torque_Limit leaves a 1.2 N.m clamp, so even a half-amplitude chirp saturates
     most of the time. Pre-flight must predict that, not the datasheet's 3.35 N.m."""
     segments = plan(scale=0.5, excited=("shoulder_pan",), stages=(2,))
-    default = preflight(segments, MINI_ARM_XML, JOINTS, np.zeros(3), calibration, LIMITS)
+    default = preflight(
+        segments, MINI_ARM_XML, JOINTS, np.zeros(3), calibration, SafetyLimits(torque_limit_fraction=0.35)
+    )
     full = preflight(segments, MINI_ARM_XML, JOINTS, np.zeros(3), calibration, FULL_TORQUE)
     chirp_default = next(r for r in default.segments if "chirp" in r.name)
     chirp_full = next(r for r in full.segments if "chirp" in r.name)

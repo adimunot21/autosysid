@@ -93,7 +93,13 @@ class FeetechBus:
             )
         sdk = self._sdk
         self._port = sdk.PortHandler(self.port_name)
-        if not self._port.openPort():
+        try:  # the SDK returns False for some failures but lets pyserial's SerialException escape for others
+            opened = self._port.openPort()
+        except Exception as error:
+            self._port = None
+            raise HardwareError(f"cannot open {self.port_name}: {error}") from error
+        if not opened:
+            self._port = None
             raise HardwareError(f"cannot open {self.port_name} (permissions? unplugged?)")
         if not self._port.setBaudRate(self.baudrate):
             self.close()

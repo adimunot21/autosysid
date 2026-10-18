@@ -38,7 +38,7 @@ def test_recorded_logs_give_a_model_that_predicts_held_out_motion(truth):
     calibration = ArmCalibration.symmetric(JOINTS)
     clock = JitteryClock()
     bus = MockBus(calibration, clock, truth={JOINT: truth}, delays_s={JOINT: TRUE_DELAY_S}, seed=1)
-    # 0.7 of full torque: at the 0.35 bring-up value this plant is saturated most of the time (see test_trajectories)
+    # 0.7 of full torque (the default); at 0.35 this plant is saturated most of the time (see test_trajectories)
     config = RecordConfig(joints=(JOINT,), amplitude_scale=0.8, safety=SafetyLimits(torque_limit_fraction=0.7))
     plan = build_plan((JOINT,), JOINTS, config.control_rate_hz, config.amplitude_scale, config.safety, stages=(2, 3))
     logs = Recorder(bus, calibration, config, clock).run(plan, xml_path=MINI_ARM_XML)

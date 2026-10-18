@@ -20,6 +20,9 @@ from autosysid.excitation import PROTOCOL_PARTS, chirp, protocol_signal
 from autosysid.model import JointDynamics, apply_dynamics, load_spec, read_dynamics, sensor_name
 
 MINI_ARM_XML = Path(__file__).parent / "assets" / "mini_arm.xml"
+# "Truth" used by `autosysid demo`: multipliers on the MJCF values plus a command latency (a known answer).
+DEMO_TRUTH_SCALE = {"kp": 0.7, "kv": 1.5, "damping": 1.4, "frictionloss": 1.5, "armature": 0.8}
+DEMO_DELAY_S = 0.026
 
 
 @dataclass(frozen=True)

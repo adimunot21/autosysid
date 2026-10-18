@@ -15,6 +15,10 @@ class HardwareError(AutoSysIDError):
     """The servo bus is missing, unresponsive, or returned malformed data."""
 
 
+class Aborted(AutoSysIDError):
+    """The operator declined to continue; nothing was moved."""
+
+
 class SafetyViolation(HardwareError):
     """A safety watchdog tripped; the run was (or must be) stopped."""
 

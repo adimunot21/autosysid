@@ -43,7 +43,9 @@ class SafetyLimits:
     # accelerate (Tmax/J ~ 150 rad/s^2), so this must stay high enough for a 2 rad/s change in one tick (Phase 4).
     # Safety comes from the rate cap, soft limits, torque limit and the tracking watchdog; this is a net against bugs.
     max_goal_accel_rad_s2: float = 400.0  # = 2 x rate cap / 10 ms tick: an instant 0 -> 2 rad/s change passes
-    torque_limit_fraction: float = 0.35  # fraction of the 1000-count Torque_Limit; bring-up
+    # fraction of the 1000-count Torque_Limit; bring-up. 0.35 left a ~1.2 N.m clamp that saturated even half-amplitude
+    # chirps (Phase 4), which makes the fit blind to kp/kv; 0.7 keeps identification workable and the arm is light.
+    torque_limit_fraction: float = 0.7
     max_temperature_c: int = 55  # bring-up: servos idle at ~23-28 C; abort well before thermal protection
     min_voltage_v: float = 10.5  # supply reads 12.0 V; a sag below this means the PSU is struggling
     max_tracking_error_rad: float = 0.5  # |goal - present| beyond this means stall/collision or a runaway

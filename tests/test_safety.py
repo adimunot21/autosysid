@@ -137,7 +137,7 @@ def test_session_sets_and_restores_registers_and_parks(calibration):
     limits = SafetyLimits()
     with SafetySession(bus, calibration, limits, RATE_HZ, clock) as session:
         assert bus.torque_enabled
-        assert bus.read_setting("torque_limit").tolist() == [350, 350, 350]
+        assert bus.read_setting("torque_limit").tolist() == [700, 700, 700]
         assert session.start_pose_rad.shape == (3,)
     assert not bus.torque_enabled
     assert bus.read_setting("torque_limit").tolist() == [1000, 1000, 1000]
