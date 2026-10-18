@@ -101,7 +101,7 @@ def _print_fits(fits) -> None:
         "95% CI",
         "status",
         title="Identified parameters",
-        caption="kp, kv and friction are weakly observable and can be off even when marked ok; trust the held-out error.",
+        caption="kp, kv, friction are weakly observable and may be off even when marked ok; trust held-out error.",
     )
     for fit in fits:
         values, nominal = fit.dynamics.to_dict(), fit.nominal.to_dict()
