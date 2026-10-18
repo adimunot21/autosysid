@@ -52,7 +52,32 @@ Findings from `scripts/smoke_sysid.py` (synthetic truth arm on the real MJCF, 12
    otherwise near-zero columns of held joints are blown up and dominate the cost.
 5. **Fit dimensionless multipliers on the nominal values** (all ~1; delay in ms) - raw values span 0.02..1000 and stall the solver.
 6. Backends: `mujoco` (LM with FD Jacobian) works; `scipy` (`trf`, `x_scale="jac"`) did not converge on this problem. Use `mujoco`.
-7. **Robustness (open):** single-shot fit of all 6 parameters from the nominal MJCF values recovered the truth within ~0.2% (kp, kv, damping,
-   armature, delay) on 3 of 4 noise seeds; the 4th got stuck in a local minimum with friction at its lower bound. Solver tolerance and a delay pre-scan did
-   not help. Phase 2 plan: staged fits, a validity gate (final cost vs. expected noise floor, CI check) and retry from a different start.
-8. Identifiability: `kp` is nearly unidentifiable on a saturating actuator (`kp * error` >> `forcerange`); CIs from `calculate_intervals` must gate what is exported.
+7. **Frozen means "leave the spec alone", not "pin at this value".** `apply_param_modifiers_spec` skips frozen parameters, so a
+   parameter pinned at a non-nominal value silently reverts to the MJCF value. `optimizer._build_model` applies every modifier
+   and uses `frozen` only to mean "not in the optimizer vector". (Regression test: `test_frozen_parameters_are_still_applied`.)
+8. **Local minima are real, and "accepted" cannot see them.** From the nominal start the solver converged (legitimately; no
+   tolerance/scaling setting changed it) to points 3-6% above the global minimum that still pass a 5x-noise-floor gate. `fit_joint` therefore
+   runs every start (nominal + perturbed) and keeps the lowest data cost. Staged fitting (delay/armature/damping first, then all)
+   makes the nominal start land in the right basin more often (3/4 vs 1/4 seeds).
+9. **Uncertainty.** `calculate_intervals` at a single-start optimum was overconfident (kp +-3% while 21% off). After multi-start the
+   intervals covered the truth in 19 of 20 identified parameters. Pinning an "unidentified" parameter at nominal biases the others
+   and makes their intervals conditional on the wrong pin; a log-normal prior (1 sigma = x3) keeps every curvature finite instead.
+10. Solver tolerance (`mjModel.opt.tolerance`), tighter `xtol/gtol`, more iterations and `x_scale="jac"` did not change which
+    minimum is found; the scipy backends were worse. Not worth tuning.
+
+## 4. Identifiability: the excitation decides what can be fitted
+
+Measured on the mock arm with the SO-ARM100 `sts3215` values (`kp=998`, `kv=2.73`, `forcerange=+-3.35`):
+
+- `kv * v` alone reaches the force clamp at about 1.2 rad/s, so the *model's* top speed is about 1 rad/s, and a 0.35 rad / 4 Hz
+  chirp (about 9 rad/s, 220 rad/s^2) drives the actuator **saturated 44-52% of the time with force chatter**. In that
+  bang-bang regime responses are chaotic in the parameters: finite-difference Jacobian columns differed by 1000x across step sizes.
+- Conversely a gentle chirp (<= 0.2 rad, <= 1.5 Hz) never saturates and tracks within 1-4 mrad, which is about one encoder
+  tick (1.5 mrad), so almost nothing but delay is identifiable from it.
+- **No single signal identifies everything.** Fitting three sequences jointly does: slow triangle ramps (friction, bias),
+  an unsaturated chirp (delay, tracking), and slew-limited steps of 0.15-0.3 rad that briefly saturate (speed plateau -> kv,
+  initial acceleration -> armature). Result on the mock arm (best of 3 starts, 4 noise seeds): kp, kv, damping, armature within
+  7%, delay within 0.3 ms, cost 2.3-2.4x the quantization floor (the truth itself scores 2.3x because of the injected read noise).
+- Friction (0.05 N.m against a 3.35 N.m clamp) is only weakly identified: errors of 2-25%, reported with a +-45% interval.
+- Consequence for hardware (Phase 4): excitation amplitude/frequency must be sized per joint from what the arm actually tracks
+  (Stage 1), and a pre-flight simulation must report the saturated fraction before any motion is commanded.

@@ -89,8 +89,12 @@ class FitConfig:
     bound_factor: float = 10.0  # multiplier bounds [1/10, 10] x nominal; wide enough to be uninformative priors
     max_delay_s: float = 0.1  # latency upper bound; also the span skipped at the start of every record
     init_delay_s: float = 0.01  # optimizer start for latency
-    max_restarts: int = 3  # extra fits from perturbed starts when the first one fails the validity gate
+    max_restarts: int = 2  # extra fits from perturbed starts; all are run and the lowest cost wins (local minima exist)
     noise_floor_margin: float = 5.0  # a fit is accepted if cost <= margin x expected quantization+noise floor
+    prior_sigma_factor: float = 3.0  # log-normal prior on each dynamics multiplier, 1 sigma = x3 (0 disables)
+    max_relative_ci: float = 0.5  # a dynamics multiplier whose 95% half-width exceeds this is "not identified"
+    max_delay_ci_s: float = 0.005  # same for latency: 5 ms is half a control period at 100 Hz
+    staged: bool = True  # fit delay/armature/damping first, then everything (see optimizer.fit_joint)
     encoder_ticks: int = 4096  # STS3215 12-bit position
     disable_contacts: bool = True  # free-air identification; contacts only cost time
     seed: int = 0  # restart perturbations
@@ -101,6 +105,8 @@ class FitConfig:
         _require(0.0 < self.init_delay_s < self.max_delay_s, "need 0 < init_delay_s < max_delay_s")
         _require(self.max_restarts >= 0, "max_restarts must be >= 0")
         _require(self.noise_floor_margin >= 1.0, "noise_floor_margin must be >= 1")
+        _require(self.prior_sigma_factor == 0 or self.prior_sigma_factor > 1, "prior_sigma_factor must be 0 or > 1")
+        _require(self.max_relative_ci > 0 and self.max_delay_ci_s > 0, "CI thresholds must be > 0")
         _require(self.encoder_ticks > 0, "encoder_ticks must be > 0")
 
 

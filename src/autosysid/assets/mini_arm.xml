@@ -1,0 +1,36 @@
+<mujoco model="mini_arm">
+  <!-- 3-DOF stand-in for the SO-101 (same joint/actuator names and servo-class structure, no meshes) so the
+       test-suite and `autosysid demo` run anywhere. Dynamics values copy the SO-ARM100 `sts3215` class. -->
+  <compiler angle="radian" autolimits="true"/>
+  <option timestep="0.002" integrator="implicitfast">
+    <flag contact="disable"/>
+  </option>
+  <default>
+    <default class="sts3215">
+      <joint damping="0.60" frictionloss="0.052" armature="0.028"/>
+      <position kp="998.22" kv="2.731" forcerange="-3.35 3.35"/>
+    </default>
+  </default>
+  <worldbody>
+    <body name="base" pos="0 0 0.05">
+      <inertial pos="0 0 0" mass="0.15" diaginertia="1e-4 1e-4 1e-4"/>
+      <body name="shoulder" pos="0 0 0.05">
+        <joint name="shoulder_pan" axis="0 0 1" range="-1.9 1.9" class="sts3215"/>
+        <inertial pos="0 0 0.03" mass="0.10" diaginertia="8e-5 8e-5 3e-5"/>
+        <body name="upper_arm" pos="0 0 0.06">
+          <joint name="shoulder_lift" axis="0 1 0" range="-1.7 1.7" class="sts3215"/>
+          <inertial pos="0 0 0.055" mass="0.10" diaginertia="1.4e-4 1.4e-4 4e-5"/>
+          <body name="lower_arm" pos="0 0 0.11">
+            <joint name="elbow_flex" axis="0 1 0" range="-1.7 1.7" class="sts3215"/>
+            <inertial pos="0 0 0.065" mass="0.10" diaginertia="1.6e-4 1.6e-4 3e-5"/>
+          </body>
+        </body>
+      </body>
+    </body>
+  </worldbody>
+  <actuator>
+    <position class="sts3215" name="shoulder_pan" joint="shoulder_pan" ctrlrange="-1.9 1.9"/>
+    <position class="sts3215" name="shoulder_lift" joint="shoulder_lift" ctrlrange="-1.7 1.7"/>
+    <position class="sts3215" name="elbow_flex" joint="elbow_flex" ctrlrange="-1.7 1.7"/>
+  </actuator>
+</mujoco>

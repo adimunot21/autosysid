@@ -32,8 +32,11 @@ packages = ["src/autosysid"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra -m 'not hardware'"
-markers = ["hardware: needs a physical SO-101 on the serial port (deselected by default)"]
+addopts = "-ra -m 'not hardware and not slow'"
+markers = [
+    "hardware: needs a physical SO-101 on the serial port (deselected by default)",
+    "slow: full multi-start fits, about a minute each (run with: pytest -m slow)",
+]
 
 [tool.ruff]
 line-length = 120
