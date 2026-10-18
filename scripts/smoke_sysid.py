@@ -33,7 +33,7 @@ CONFIG = {
     "seed": 0,  # reproducibility
     # truth multipliers relative to the MJCF nominal values
     "truth_scale": {"kp": 0.7, "kv": 1.5, "damping": 1.4, "frictionloss": 1.5, "armature": 0.8},
-    "truth_delay_s": 0.026,  # latency to recover; a whole number of 2 ms sim steps so the ZOH of the input-delayed truth matches the output-delayed fit model
+    "truth_delay_s": 0.026,  # latency to recover (13 sim steps)
     "init_delay_s": 0.010,  # optimizer start (nominal has no notion of delay)
     "max_delay_s": 0.1,  # upper bound on latency; also the span skipped at the start of each record
     "bound_factor": 10.0,  # box bounds nominal/10 .. nominal*10
@@ -111,7 +111,7 @@ def main() -> None:
     parser.add_argument("--xml", required=True, help="path to scene.xml / so101_new_calib.xml")
     parser.add_argument("--scan-delay", action="store_true", help="stage 0: 1-D delay scan before the full fit")
     parser.add_argument("--optimizer", default="mujoco", choices=["mujoco", "scipy", "scipy_parallel_fd"])
-    parser.add_argument("--eps", type=float, default=None, help="finite-difference step for the Jacobian (on multipliers)")
+    parser.add_argument("--eps", type=float, default=None, help="finite-difference step (on multipliers)")
     args = parser.parse_args()
     joint = CONFIG["joint"]
     rng = np.random.default_rng(CONFIG["seed"])
@@ -173,7 +173,9 @@ def main() -> None:
             field, nominal=1.0, min_value=1 / factor, max_value=factor,
             modifier=lambda s, p, field=field: set_joint_field(s, joint, field, nominal[field] * p.value[0]),
         ))
-    params.add(sysid.Parameter("delay_ms", nominal=CONFIG["init_delay_s"] * 1e3, min_value=0.0, max_value=CONFIG["max_delay_s"] * 1e3))
+    params.add(sysid.Parameter(
+        "delay_ms", nominal=CONFIG["init_delay_s"] * 1e3, min_value=0.0, max_value=CONFIG["max_delay_s"] * 1e3
+    ))
 
     def modify_residual(params, pred, measured_ts, model, return_pred_all, state=None, **_):
         """Delay the prediction, window the measured data to the span it covers, take weighted diff."""

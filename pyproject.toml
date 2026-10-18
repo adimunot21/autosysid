@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "autosysid"
+version = "0.1.0"
+description = "Hardware-in-the-loop system identification for serial-bus robot arms: SO-101 (Feetech STS3215) to calibrated MuJoCo MJCF."
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.12"  # only 3.12 verified (mujoco 3.16.0 cp312 wheel)
+authors = [{ name = "adimunot21" }]
+dependencies = [
+    # The sysid module is an optional extra: plain `mujoco` imports fine but exposes no `mujoco.sysid`.
+    # Pinned exactly: behaviour verified only on 3.16.0 (see docs/data-contract.md).
+    "mujoco[sysid]==3.16.0",
+    "numpy>=2.0,<3",
+    "typer>=0.12",
+    "rich>=13",
+    "pyyaml>=6",
+    "feetech-servo-sdk>=1.0,<2",  # provides `scservo_sdk`; Dynamixel support is a future ServoBus implementation
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5"]
+
+[project.scripts]
+autosysid = "autosysid.cli:run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/autosysid"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra -m 'not hardware'"
+markers = ["hardware: needs a physical SO-101 on the serial port (deselected by default)"]
+
+[tool.ruff]
+line-length = 120
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
