@@ -40,7 +40,7 @@ class SafetyLimits:
     soft_limit_fraction: float = 0.8  # use the central 80% of the calibrated range; keeps clear of mechanical stops
     max_goal_rate_rad_s: float = 2.0  # bring-up: ~115 deg/s cap on commanded velocity
     max_goal_accel_rad_s2: float = 20.0  # bring-up: limits step-like commands that would shock the plastic brackets
-    torque_limit_fraction: float = 0.35  # of the 1000-count Torque_Limit register; bring-up: must still hold pose against gravity
+    torque_limit_fraction: float = 0.35  # fraction of the 1000-count Torque_Limit; bring-up
     max_temperature_c: int = 55  # bring-up: servos idle at ~23-28 C; abort well before thermal protection
     min_voltage_v: float = 10.5  # supply reads 12.0 V; a sag below this means the PSU is struggling
     max_tracking_error_rad: float = 0.5  # |goal - present| beyond this means stall/collision or a runaway
