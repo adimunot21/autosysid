@@ -81,3 +81,19 @@ Measured on the mock arm with the SO-ARM100 `sts3215` values (`kp=998`, `kv=2.73
 - Friction (0.05 N.m against a 3.35 N.m clamp) is only weakly identified: errors of 2-25%, reported with a +-45% interval.
 - Consequence for hardware (Phase 4): excitation amplitude/frequency must be sized per joint from what the arm actually tracks
   (Stage 1), and a pre-flight simulation must report the saturated fraction before any motion is commanded.
+
+## 5. Export (Phase 3)
+
+Verified against the real SO-101 model (`scene.xml` -> `<include so101_new_calib.xml>`; joints use `class="sts3215"`):
+
+- `scene.xml` contains no joints; they are in the included file, so the exporter follows `<include>` chains (relative to the
+  including file, then the main file) and re-emits only files that changed, rewriting the include path (directory part kept).
+- Joint values are inherited from `<default class="sts3215">`, but actuators override `forcerange` per element (+-3.35, while the class says
+  +-2.94). `forcerange` is not fitted, so it is left alone; the effective limit comes from the element, not the class.
+- The upstream folder also holds a stale `joints_properties.xml` (`kp=17.8, kv=0`) that no file includes. It is not the model;
+  the canonical values are in `so101_new_calib.xml` (`kp=998.22, kv=2.731`).
+- Edits are located with expat byte offsets and applied to the start tags only. Exporting `elbow_flex` changes exactly 2 lines in
+  the model file (the `<joint>` and the `<position>`) plus the `<include>` line in the scene; comments/ordering/quotes are untouched.
+- Latency (`delay_s`) has no MJCF representation; it is written to `<out>.calibration.json` together with 95% CIs, costs and
+  the fit config. The JSON uses file names, not absolute paths.
+- Output must be in the same directory as the source (relative `meshdir` and includes keep working without copying 16 MB of meshes).

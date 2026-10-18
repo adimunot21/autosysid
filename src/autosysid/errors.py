@@ -25,3 +25,7 @@ class DataError(AutoSysIDError):
 
 class FitError(AutoSysIDError):
     """The optimization finished but the result is not trustworthy enough to export."""
+
+
+class ExportError(AutoSysIDError):
+    """The fitted values cannot be written into the MJCF unambiguously, or the written file failed verification."""
