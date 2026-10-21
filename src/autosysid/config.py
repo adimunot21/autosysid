@@ -48,6 +48,9 @@ class SafetyLimits:
     torque_limit_fraction: float = 0.7
     max_temperature_c: int = 55  # bring-up: servos idle at ~23-28 C; abort well before thermal protection
     min_voltage_v: float = 10.5  # supply reads 12.0 V; a sag below this means the PSU is struggling
+    # Phase 6: ~0.3% of bus reads carry a corrupt temperature/voltage byte (64 C on a 23 C servo, 10.5 V on 12 V).
+    # Heating and sag take seconds, so a fault must persist this many consecutive reads (50 ms at 100 Hz) to count.
+    slow_fault_samples: int = 5
     max_tracking_error_rad: float = 0.5  # |goal - present| beyond this means stall/collision or a runaway
     max_loop_jitter_s: float = 0.02  # a gap this large (2 periods at 100 Hz) means the control loop stalled
     comm_timeout_s: float = 0.1  # consecutive failed reads for this long => safe stop
@@ -60,6 +63,7 @@ class SafetyLimits:
         _require(0.0 < self.torque_limit_fraction <= 1.0, "torque_limit_fraction must be in (0, 1]")
         _require(self.max_temperature_c > 0, "max_temperature_c must be > 0")
         _require(self.min_voltage_v > 0, "min_voltage_v must be > 0")
+        _require(self.slow_fault_samples >= 1, "slow_fault_samples must be >= 1")
         _require(self.max_tracking_error_rad > 0, "max_tracking_error_rad must be > 0")
         _require(self.max_loop_jitter_s > 0, "max_loop_jitter_s must be > 0")
         _require(self.comm_timeout_s > 0, "comm_timeout_s must be > 0")

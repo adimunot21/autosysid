@@ -82,18 +82,24 @@ class SafetyMonitor:
         self.limits, self.joints = limits, joints
         self.hard_lower, self.hard_upper = calibration.hard_limits_rad()
         self._first_failure_s: float | None = None
+        self._hot_reads = 0  # consecutive reads over the temperature / under the voltage limit (see slow_fault_samples)
+        self._low_voltage_reads = 0
 
     def check_state(self, snapshot: ServoSnapshot, measured_rad: np.ndarray, last_goal_rad: np.ndarray | None) -> None:
         self._first_failure_s = None  # a good read ends any comm-failure streak
         hot = np.flatnonzero(snapshot.temperature_c > self.limits.max_temperature_c)
-        if hot.size:
+        self._hot_reads = self._hot_reads + 1 if hot.size else 0
+        if self._hot_reads >= self.limits.slow_fault_samples:
             raise SafetyViolation(
                 f"over-temperature: {self.joints[hot[0]]} at {snapshot.temperature_c[hot[0]]:.0f} C "
-                f"(limit {self.limits.max_temperature_c} C)"
+                f"(limit {self.limits.max_temperature_c} C, {self._hot_reads} reads in a row)"
             )
-        if np.min(snapshot.voltage_v) < self.limits.min_voltage_v:
+        low_voltage = np.min(snapshot.voltage_v) < self.limits.min_voltage_v
+        self._low_voltage_reads = self._low_voltage_reads + 1 if low_voltage else 0
+        if self._low_voltage_reads >= self.limits.slow_fault_samples:
             raise SafetyViolation(
-                f"supply voltage {np.min(snapshot.voltage_v):.1f} V below {self.limits.min_voltage_v} V"
+                f"supply voltage {np.min(snapshot.voltage_v):.1f} V below {self.limits.min_voltage_v} V "
+                f"({self._low_voltage_reads} reads in a row)"
             )
         outside = np.flatnonzero((measured_rad < self.hard_lower - 0.05) | (measured_rad > self.hard_upper + 0.05))
         if outside.size:
@@ -185,10 +191,10 @@ class SafetySession:
     _engaged: bool = field(default=False, init=False)
 
     def __enter__(self) -> SafetySession:
-        snapshot = self.bus.read_state()
-        SafetyMonitor(self.limits, self.bus.joints, self.calibration).check_state(
-            snapshot, self.calibration.ticks_to_rad(snapshot.position_ticks), None
-        )
+        monitor = SafetyMonitor(self.limits, self.bus.joints, self.calibration)
+        for _ in range(self.limits.slow_fault_samples):  # enough consecutive reads for a persistent fault to register
+            snapshot = self.bus.read_state()
+            monitor.check_state(snapshot, self.calibration.ticks_to_rad(snapshot.position_ticks), None)
         self.start_pose_rad = self.calibration.ticks_to_rad(snapshot.position_ticks)
         lower, upper = self.calibration.soft_limits_rad(self.limits.soft_limit_fraction)
         if np.any(self.start_pose_rad < lower) or np.any(self.start_pose_rad > upper):

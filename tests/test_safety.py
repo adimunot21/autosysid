@@ -82,8 +82,19 @@ def test_monitor_accepts_a_healthy_state(calibration):
     ],
 )
 def test_monitor_trips_on_servo_health(calibration, kwargs, message):
+    monitor = make_monitor(calibration)
     with pytest.raises(SafetyViolation, match=message):
-        make_monitor(calibration).check_state(snapshot(**kwargs), np.zeros(3), None)
+        for _ in range(SafetyLimits().slow_fault_samples):
+            monitor.check_state(snapshot(**kwargs), np.zeros(3), None)
+
+
+@pytest.mark.parametrize("kwargs", [{"temperature": 64.0}, {"voltage": 9.0}])
+def test_monitor_ignores_an_isolated_corrupt_servo_health_read(calibration, kwargs):
+    # Phase 6: ~0.3% of real reads carry a corrupt temperature/voltage byte (64 C on a 23 C servo)
+    monitor = make_monitor(calibration)
+    for _ in range(50):
+        monitor.check_state(snapshot(), np.zeros(3), None)
+        monitor.check_state(snapshot(**kwargs), np.zeros(3), None)
 
 
 def test_monitor_trips_on_tracking_error_and_range(calibration):

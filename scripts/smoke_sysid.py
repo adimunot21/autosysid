@@ -57,8 +57,9 @@ def load_spec(xml_path: str) -> mujoco.MjSpec:
     return spec
 
 
-def set_joint_dynamics(spec: mujoco.MjSpec, joint: str, kp: float, kv: float, damping: float,
-                       frictionloss: float, armature: float) -> None:
+def set_joint_dynamics(
+    spec: mujoco.MjSpec, joint: str, kp: float, kv: float, damping: float, frictionloss: float, armature: float
+) -> None:
     sysid.apply_pdgain(spec, joint, np.array([kp, kv]))
     set_joint_field(spec, joint, "damping", damping)
     spec.joint(joint).frictionloss = frictionloss
@@ -81,8 +82,14 @@ def zero_order_hold(query_times: np.ndarray, record_times: np.ndarray, values: n
     return values[indices]
 
 
-def simulate_truth(spec: mujoco.MjSpec, joint: str, record_times: np.ndarray, target_rad: np.ndarray,
-                   delay_s: float, rng: np.random.Generator):
+def simulate_truth(
+    spec: mujoco.MjSpec,
+    joint: str,
+    record_times: np.ndarray,
+    target_rad: np.ndarray,
+    delay_s: float,
+    rng: np.random.Generator,
+):
     """Roll out the truth model with the command delayed by `delay_s`; sample at record_times.
 
     Uses `mujoco.rollout` - the same engine and sensor/time semantics as sysid's fit rollouts - so any
@@ -164,18 +171,30 @@ def main() -> None:
     # Dimensionless multipliers on the nominal values (all ~1) keep the Gauss-Newton problem well scaled;
     # raw values span 0.02..1000. Delay is in milliseconds for the same reason.
     params = sysid.ParameterDict()
-    params.add(sysid.Parameter(
-        "pdgain", nominal=[1.0, 1.0], min_value=[1 / factor, 1 / factor], max_value=[factor, factor],
-        modifier=lambda s, p: sysid.apply_pdgain(s, joint, np.array([nominal["kp"], nominal["kv"]]) * p.value),
-    ))
+    params.add(
+        sysid.Parameter(
+            "pdgain",
+            nominal=[1.0, 1.0],
+            min_value=[1 / factor, 1 / factor],
+            max_value=[factor, factor],
+            modifier=lambda s, p: sysid.apply_pdgain(s, joint, np.array([nominal["kp"], nominal["kv"]]) * p.value),
+        )
+    )
     for field in ("damping", "frictionloss", "armature"):
-        params.add(sysid.Parameter(
-            field, nominal=1.0, min_value=1 / factor, max_value=factor,
-            modifier=lambda s, p, field=field: set_joint_field(s, joint, field, nominal[field] * p.value[0]),
-        ))
-    params.add(sysid.Parameter(
-        "delay_ms", nominal=CONFIG["init_delay_s"] * 1e3, min_value=0.0, max_value=CONFIG["max_delay_s"] * 1e3
-    ))
+        params.add(
+            sysid.Parameter(
+                field,
+                nominal=1.0,
+                min_value=1 / factor,
+                max_value=factor,
+                modifier=lambda s, p, field=field: set_joint_field(s, joint, field, nominal[field] * p.value[0]),
+            )
+        )
+    params.add(
+        sysid.Parameter(
+            "delay_ms", nominal=CONFIG["init_delay_s"] * 1e3, min_value=0.0, max_value=CONFIG["max_delay_s"] * 1e3
+        )
+    )
 
     def modify_residual(params, pred, measured_ts, model, return_pred_all, state=None, **_):
         """Delay the prediction, window the measured data to the span it covers, take weighted diff."""
@@ -219,25 +238,36 @@ def main() -> None:
         print(f"delay scan -> start at {params['delay_ms'].value[0]:.0f} ms")
 
     start = time.perf_counter()
-    opt_params, result = sysid.optimize(params, residual_fn, optimizer=args.optimizer, max_iters=60, verbose=False,
-                                     **({"eps": args.eps} if args.eps and args.optimizer == "mujoco" else {}),
-                                     **({"x_scale": "jac"} if args.optimizer != "mujoco" else {}))
+    opt_params, result = sysid.optimize(
+        params,
+        residual_fn,
+        optimizer=args.optimizer,
+        max_iters=60,
+        verbose=False,
+        **({"eps": args.eps} if args.eps and args.optimizer == "mujoco" else {}),
+        **({"x_scale": "jac"} if args.optimizer != "mujoco" else {}),
+    )
     print(f"fit took {time.perf_counter() - start:.1f} s")
 
     # --- compare -------------------------------------------------------------------------------------
     fitted = {
-        "kp": nominal["kp"] * opt_params["pdgain"].value[0], "kv": nominal["kv"] * opt_params["pdgain"].value[1],
+        "kp": nominal["kp"] * opt_params["pdgain"].value[0],
+        "kv": nominal["kv"] * opt_params["pdgain"].value[1],
         "damping": nominal["damping"] * opt_params["damping"].value[0],
         "frictionloss": nominal["frictionloss"] * opt_params["frictionloss"].value[0],
         "armature": nominal["armature"] * opt_params["armature"].value[0],
     }
     print(f"\n{'param':<14}{'nominal':>12}{'truth':>12}{'fitted':>12}{'err %':>9}")
     for key in nominal:
-        print(f"{key:<14}{nominal[key]:>12.4g}{truth[key]:>12.4g}{fitted[key]:>12.4g}"
-              f"{100 * (fitted[key] - truth[key]) / truth[key]:>9.1f}")
+        print(
+            f"{key:<14}{nominal[key]:>12.4g}{truth[key]:>12.4g}{fitted[key]:>12.4g}"
+            f"{100 * (fitted[key] - truth[key]) / truth[key]:>9.1f}"
+        )
     delay_fit = opt_params["delay_ms"].value[0] * 1e-3
-    print(f"{'delay_s':<14}{CONFIG['init_delay_s']:>12.4g}{CONFIG['truth_delay_s']:>12.4g}{delay_fit:>12.4g}"
-          f"{100 * (delay_fit - CONFIG['truth_delay_s']) / CONFIG['truth_delay_s']:>9.1f}")
+    print(
+        f"{'delay_s':<14}{CONFIG['init_delay_s']:>12.4g}{CONFIG['truth_delay_s']:>12.4g}{delay_fit:>12.4g}"
+        f"{100 * (delay_fit - CONFIG['truth_delay_s']) / CONFIG['truth_delay_s']:>9.1f}"
+    )
 
     _, intervals = sysid.calculate_intervals(residual_fn(opt_params.as_vector(), opt_params)[0], result.jac)
     print("95% CI half-widths (kp,kv,damping,friction,armature,delay):", np.array2string(intervals, precision=3))
