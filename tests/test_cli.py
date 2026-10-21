@@ -41,6 +41,17 @@ def test_doctor_on_the_mock_arm_is_read_only_and_reports_every_joint():
     assert "sync read" in result.output
 
 
+def test_release_on_the_mock_arm_turns_torque_off():
+    result = runner.invoke(app, ["release", "--mock"])
+    assert result.exit_code == 0, result.output
+    assert "limp" in result.output
+
+
+def test_release_without_hardware_fails_cleanly():
+    result = runner.invoke(app, ["release", "--port", "/dev/does-not-exist", "--yes"])
+    assert result.exit_code != 0 and "Traceback" not in result.output
+
+
 def test_doctor_without_hardware_fails_with_a_clear_error_and_opens_nothing():
     result = runner.invoke(app, ["doctor", "--port", "/dev/does-not-exist"])
     assert result.exit_code != 0 and isinstance(result.exception, HardwareError)

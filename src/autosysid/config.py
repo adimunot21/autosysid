@@ -55,6 +55,9 @@ class SafetyLimits:
     max_loop_jitter_s: float = 0.02  # a gap this large (2 periods at 100 Hz) means the control loop stalled
     comm_timeout_s: float = 0.1  # consecutive failed reads for this long => safe stop
     safe_stop_rate_rad_s: float = 0.3  # bring-up: slow return to the start pose after a trip (~17 deg/s)
+    # Phase 6: releasing torque lets a gravity-loaded arm fall (shoulder_lift sagged 47 deg). True keeps the original
+    # park-then-release behaviour; the CLI defaults to False (hold) and `autosysid release` lets the operator do it.
+    release_torque_at_end: bool = True
 
     def __post_init__(self) -> None:
         _require(0.0 < self.soft_limit_fraction <= 1.0, "soft_limit_fraction must be in (0, 1]")

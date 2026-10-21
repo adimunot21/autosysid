@@ -145,14 +145,14 @@ def _print_validation(results) -> None:
     console.print(table)
 
 
-def _record_config(bus, mock, port, baudrate, joints, amplitude_scale, torque_limit) -> RecordConfig:
+def _record_config(bus, mock, port, baudrate, joints, amplitude_scale, torque_limit, hold_at_end=True) -> RecordConfig:
     default = (bus.joints[0],) if mock else ARM_JOINT_NAMES
     return RecordConfig(
         port=port,
         baudrate=baudrate,
         joints=pipeline.parse_joints(joints, bus.joints) if joints else default,
         amplitude_scale=amplitude_scale,
-        safety=SafetyLimits(torque_limit_fraction=torque_limit),
+        safety=SafetyLimits(torque_limit_fraction=torque_limit, release_torque_at_end=not hold_at_end),
     )
 
 
@@ -222,13 +222,21 @@ def record(
     stages: Annotated[str, typer.Option(help="Which stages to run, e.g. 1 or 1,2,3.")] = "1,2,3",
     amplitude_scale: Annotated[float, typer.Option(help="0-1 multiplier on all amplitudes and speeds.")] = 0.5,
     torque_limit: Annotated[float, typer.Option(help="Fraction of full servo torque while recording.")] = 0.7,
+    hold_at_end: Annotated[
+        bool,
+        typer.Option(
+            "--hold-at-end/--release-at-end",
+            help="Keep torque ON when the run ends (default) so a gravity-loaded arm cannot fall; "
+            "release it yourself with `autosysid release`.",
+        ),
+    ] = True,
     yes: Annotated[bool, typer.Option("--yes", help="Skip the confirmation prompt.")] = False,
 ) -> None:
     """Run the excitation plan (pre-flight first) and save the raw logs to the run directory."""
     stage_tuple = pipeline.parse_stages(stages)
     bus, arm_calibration, clock = pipeline.open_bus(xml, mock, port, baudrate, calibration)
     try:
-        config = _record_config(bus, mock, port, baudrate, joints, amplitude_scale, torque_limit)
+        config = _record_config(bus, mock, port, baudrate, joints, amplitude_scale, torque_limit, hold_at_end)
         path = _run_dir(run_dir)
         with console.status("recording..."):
             logs = pipeline.record(
@@ -242,6 +250,40 @@ def record(
                 confirm=_confirm_factory(mock, yes, config, stage_tuple),
             )
         console.print(f"recorded {len(logs)} segments -> [bold]{path}[/bold]")
+        _warn_if_holding(config, mock)
+    finally:
+        bus.close()
+
+
+def _warn_if_holding(config: RecordConfig, mock: bool) -> None:
+    if mock or config.safety.release_torque_at_end:
+        return
+    console.print(
+        "[bold yellow]The arm is still HOLDING (torque ON).[/bold yellow] Support it, then run "
+        "[bold]autosysid release[/bold] to let it go limp."
+    )
+
+
+@app.command()
+def release(
+    port: PortOption = DEFAULT_PORT,
+    calibration: CalibrationOption = None,
+    baudrate: int = 1_000_000,
+    mock: MockOption = False,
+    xml: Annotated[Path, typer.Option("--xml")] = MINI_ARM_XML,
+    yes: Annotated[bool, typer.Option("--yes", help="Skip the confirmation prompt.")] = False,
+) -> None:
+    """Turn torque OFF on every servo. A gravity-loaded arm FALLS: support it first. Writes Torque_Enable only."""
+    bus, arm_calibration, _ = pipeline.open_bus(xml, mock, port, baudrate, calibration)
+    try:
+        radians = arm_calibration.ticks_to_rad(bus.read_state().position_ticks)
+        console.print("pose (rad): " + ", ".join(f"{n} {r:+.2f}" for n, r in zip(bus.joints, radians, strict=True)))
+        if not (mock or yes):
+            console.print("[bold red]The arm will go limp and may fall.[/bold red] Support it with your hand.")
+            if not typer.confirm("Release torque?", default=False):
+                raise typer.Exit(code=1)
+        bus.set_torque(False)
+        console.print("torque released: the arm is limp")
     finally:
         bus.close()
 
@@ -307,6 +349,14 @@ def calibrate(
     stages: Annotated[str, typer.Option(help="Stages to record, e.g. 2,3.")] = "1,2,3",
     amplitude_scale: Annotated[float, typer.Option()] = 0.5,
     torque_limit: Annotated[float, typer.Option()] = 0.7,
+    hold_at_end: Annotated[
+        bool,
+        typer.Option(
+            "--hold-at-end/--release-at-end",
+            help="Keep torque ON when the run ends (default) so a gravity-loaded arm cannot fall; "
+            "release it yourself with `autosysid release`.",
+        ),
+    ] = True,
     restarts: Annotated[int, typer.Option()] = 2,
     yes: Annotated[bool, typer.Option("--yes")] = False,
     force: Annotated[bool, typer.Option("--force")] = False,
@@ -316,7 +366,7 @@ def calibrate(
     stage_tuple = pipeline.parse_stages(stages)
     bus, arm_calibration, clock = pipeline.open_bus(xml, mock, port, baudrate, calibration)
     try:
-        config = _record_config(bus, mock, port, baudrate, joints, amplitude_scale, torque_limit)
+        config = _record_config(bus, mock, port, baudrate, joints, amplitude_scale, torque_limit, hold_at_end)
         path = _run_dir(run_dir)
         logs = pipeline.record(
             bus,

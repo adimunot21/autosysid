@@ -234,7 +234,15 @@ class SafetySession:
     def _cleanup(self, engaged: bool) -> None:
         try:
             if engaged:
-                safe_stop(self.bus, self.calibration, self.limits, self.clock, self.start_pose_rad, self.rate_hz)
+                safe_stop(
+                    self.bus,
+                    self.calibration,
+                    self.limits,
+                    self.clock,
+                    self.start_pose_rad,
+                    self.rate_hz,
+                    release=self.limits.release_torque_at_end,
+                )
             for name, values in self._saved_settings.items():
                 try:
                     self.bus.write_setting(name, values)

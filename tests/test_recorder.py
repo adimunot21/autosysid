@@ -66,6 +66,22 @@ def test_arm_is_parked_released_and_registers_restored_after_a_run():
     assert not bus.torque_enabled and bus.read_setting("torque_limit").tolist() == [1000, 1000, 1000]
 
 
+def test_holding_at_the_end_keeps_torque_on_and_still_restores_registers():
+    # Phase 6: releasing torque let a gravity-loaded arm fall 47 deg; the CLI now holds and the operator releases
+    bus, recorder, plan = setup(limits=SafetyLimits(release_torque_at_end=False))
+    recorder.run(plan)
+    assert bus.torque_enabled and bus.read_setting("torque_limit").tolist() == [1000, 1000, 1000]
+
+
+def test_holding_at_the_end_also_applies_after_a_trip():
+    fault = Fault("overtemp", start_s=1.0, joint="elbow_flex", value=80.0)
+    bus, recorder, plan = setup(faults=(fault,), limits=SafetyLimits(release_torque_at_end=False))
+    with pytest.raises(SafetyViolation, match="over-temperature"):
+        recorder.run(plan)
+    assert bus.torque_enabled, "after a trip the arm is parked but not dropped"
+    assert bus.read_setting("torque_limit").tolist() == [1000, 1000, 1000]
+
+
 def test_failed_preflight_moves_nothing_and_engages_nothing():
     strict = SafetyLimits(max_tracking_error_rad=0.002)
     bus, recorder, plan = setup(limits=strict, scale=1.0, stages=(2,))
