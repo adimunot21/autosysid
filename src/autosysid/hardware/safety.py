@@ -215,8 +215,8 @@ class SafetySession:
                 zip(self.bus.joints, (reduced / self._saved_settings["torque_limit"]).tolist(), strict=True)
             )
             self.bus.write_goal_ticks(snapshot.position_ticks)
+            self._engaged = True  # set first: a failed set_torque can still have energized some servos (Phase 6)
             self.bus.set_torque(True)
-            self._engaged = True
         except BaseException:
             self._cleanup(engaged=self._engaged)
             raise

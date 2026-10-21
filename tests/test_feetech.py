@@ -18,6 +18,7 @@ class FakeSDK:
     def __init__(self):
         self.memory = {sid: {} for sid in (1, 2, 3)}
         self.fail_sync_read = False
+        self.write_failures = 0  # the next N register writes lose their status packet and change nothing
         for sid in self.memory:
             self.put(sid, 3, 777, 2)
             self.put(sid, 33, 0, 1)
@@ -56,6 +57,9 @@ class FakeSDK:
                 return sdk.get(sid, address, 2), 0, 0
 
             def write1ByteTxRx(self, port, sid, address, value):
+                if sdk.write_failures:
+                    sdk.write_failures -= 1
+                    return -6, 0
                 sdk.put(sid, address, value, 1)
                 sdk.log.append(("w1", sid, address, value))
                 return 0, 0
@@ -206,3 +210,16 @@ def test_open_turns_sdk_exceptions_into_hardware_errors(sdk, monkeypatch):
     sdk.PortHandler = Exploding
     with pytest.raises(HardwareError, match="cannot open /dev/fake"):
         FeetechBus("/dev/fake", 1_000_000, CALIBRATION, sdk=sdk).open()
+
+
+def test_a_lost_status_packet_on_a_register_write_is_retried(sdk, bus):
+    sdk.write_failures = 2
+    bus.set_torque(True)
+    assert [sdk.get(sid, 40, 1) for sid in (1, 2, 3)] == [1, 1, 1]
+
+
+def test_a_persistent_write_failure_still_raises_and_still_tries_every_servo(sdk, bus):
+    sdk.write_failures = 3  # servo 1 loses all three attempts; servos 2 and 3 then succeed
+    with pytest.raises(HardwareError, match="servo 1"):
+        bus.set_torque(True)
+    assert [sdk.get(sid, 40, 1) for sid in (2, 3)] == [1, 1]

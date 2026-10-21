@@ -30,6 +30,8 @@ ADDR_ACCELERATION, ADDR_GOAL_POSITION, ADDR_TORQUE_LIMIT = 41, 42, 48
 STATE_BLOCK_ADDRESS, STATE_BLOCK_LENGTH = 56, 8  # position(2) velocity(2) load(2) voltage(1) temperature(1)
 STS3215_MODEL_NUMBER = 777
 POSITION_MODE = 0
+# Phase 6: the real bus drops the occasional status packet (a torque-enable write once failed on servo 5 of 6)
+COMM_ATTEMPTS = 3
 PROTOCOL_END = 0  # STS/SMS series use the little-endian packet variant
 VELOCITY_SIGN_BIT, LOAD_SIGN_BIT = 15, 10  # LeRobot STS_SMS_SERIES_ENCODINGS_TABLE (unverified under motion)
 _SETTING_REGISTERS = {"torque_limit": (ADDR_TORQUE_LIMIT, 2), "acceleration": (ADDR_ACCELERATION, 1)}
@@ -219,13 +221,19 @@ class FeetechBus:
 
     def _read(self, servo_id: int, address: int, length: int) -> int:
         read = self._packet.read1ByteTxRx if length == 1 else self._packet.read2ByteTxRx
-        value, comm, error = read(self._port, servo_id, address)
+        for _ in range(COMM_ATTEMPTS):  # a read changes nothing, so a lost packet is simply asked for again
+            value, comm, error = read(self._port, servo_id, address)
+            if comm == self._sdk.COMM_SUCCESS:
+                break
         self._raise_if_failed(servo_id, address, comm, error)
         return value
 
     def _write(self, servo_id: int, address: int, length: int, value: int) -> None:
         write = self._packet.write1ByteTxRx if length == 1 else self._packet.write2ByteTxRx
-        comm, error = write(self._port, servo_id, address, value)
+        for _ in range(COMM_ATTEMPTS):  # register writes are idempotent; a lost status packet is not a failed write
+            comm, error = write(self._port, servo_id, address, value)
+            if comm == self._sdk.COMM_SUCCESS:
+                break
         self._raise_if_failed(servo_id, address, comm, error)
 
     def _raise_if_failed(self, servo_id: int, address: int, comm: int, error: int) -> None:

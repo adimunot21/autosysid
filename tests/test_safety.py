@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from autosysid.config import SafetyLimits
-from autosysid.errors import SafetyViolation
+from autosysid.errors import HardwareError, SafetyViolation
 from autosysid.hardware.bus import Fault, MockBus, ServoSnapshot
 from autosysid.hardware.calibration import ArmCalibration
 from autosysid.hardware.clock import SimClock
@@ -189,3 +189,21 @@ def test_session_installs_and_restores_the_sigint_handler(calibration):
         signal.raise_signal(signal.SIGINT)
         assert session.stop_requested, "Ctrl-C must request a safe stop, not raise mid-write"
     assert signal.getsignal(signal.SIGINT) == original
+
+
+def test_session_parks_and_releases_even_if_enabling_torque_fails_halfway(calibration):
+    # Phase 6: set_torque once failed on one servo after energizing the others; the session must still clean up
+    clock = SimClock()
+    bus = MockBus(calibration, clock)
+    real_set_torque = bus.set_torque
+
+    def flaky(enabled):
+        real_set_torque(enabled)
+        if enabled:
+            raise HardwareError("servo 3 register 40: no status packet")
+
+    bus.set_torque = flaky
+    with pytest.raises(HardwareError):
+        SafetySession(bus, calibration, SafetyLimits(), RATE_HZ, clock).__enter__()
+    assert not bus.torque_enabled, "nothing may stay energized after a failed start"
+    assert bus.read_setting("torque_limit").tolist() == [1000, 1000, 1000]
