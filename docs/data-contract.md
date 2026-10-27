@@ -151,3 +151,21 @@ Measured: cost 1.26x the quantization floor, delay 26.20 ms (truth 26.0), **held
 (4.9x better, about a third of one encoder tick). Parameters vs truth: kv 0.99, damping 0.90, armature 0.89, kp 1.31, friction 0.21.
 Friction is the one the CI got wrong (it was not flagged): its 0.05 N.m is invisible next to a 3.35 N.m clamp, which is exactly
 why held-out error, not parameter agreement, is the acceptance criterion.
+
+## 6. Phase 6 findings (real SO-101, 12 V, one arm)
+
+Full analysis in [POSTMORTEM.md](POSTMORTEM.md). Interface facts only:
+
+- Stable port: use the udev alias (`/dev/so101-follower`), never `ttyACM*`; the numbering changes when other USB
+  serial devices are plugged in.
+- Bus: 1 Mbps, six-servo sync read 1.35-1.5 ms, 100 Hz loop with 0.05 ms jitter.
+- `Present_Velocity` is in ticks/s with the correct sign. `Present_Load` is non-zero and signed only with torque on
+  (about +-30 to 140 raw); its physical unit was not established.
+- About 0.3% of reads return a corrupt temperature or voltage byte. Debounce before acting on them.
+- A register write can lose its status packet (seen once on torque enable). Retry; writes are idempotent.
+- Releasing torque lets a gravity-loaded arm fall (shoulder_lift sagged about 47 degrees). Hold torque at the end of a
+  run and release only when the arm is supported (`autosysid release`).
+- Registers read at default: P=16, I=0, D=32, Minimum_Startup_Force=16, dead zones 1, Torque_Limit 1000 (gripper 500).
+- Unresolved: the Phase 0 note says MJCF zero is mid-range, but the code uses tick 2047. Differs by up to about 9
+  degrees on some joints. Not checked further because the project was stopped.
+- Not verified: whether `Torque_Limit` scales torque linearly.
