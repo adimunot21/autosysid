@@ -9,6 +9,7 @@ one folder per excited joint. `scripts/reproduce_postmortem.py` and `scripts/val
 | `shoulder_pan/` | `runs/multi_shoulder_pan` | shoulder_pan | no |
 | `wrist_flex/` | `runs/multi_wrist_flex` | wrist_flex | no |
 | `shoulder_lift/pose1/` | `runs/hw/shoulder_lift_pose1_a1` (stage 1), `_s2` (stage 2), 2026-11-01 | shoulder_lift, base pose 2045 ticks, `--behavior-sweep --amplitude-scale 1.0` | no |
+| `shoulder_lift/pose2/` | `runs/hw/shoulder_lift_pose2_s1`, `_s2`, 2026-11-01 | shoulder_lift, base pose 1475 ticks (-50 deg), same flags | no |
 
 `elbow_flex` and `gripper` have no data yet; `shoulder_lift` has one base pose (a first stage-1 run at scale 0.5 barely moved the joint and was not kept). Recorded 12 V, default servo PID (P=16 I=0 D=32),
 Torque_Limit 70%, one arm. `record*.json` next to the logs is the recorder's own provenance (config, segment names).
