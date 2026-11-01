@@ -1,0 +1,189 @@
+"""Behavioral servo model: delay -> deadband (play) -> first-order lag, with a gravity-style command offset."""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+from autosysid.behavior import (
+    RAD_PER_TICK,
+    BehaviorFilter,
+    BehaviorParams,
+    fit_behavior,
+    rms_error_ticks,
+    simulate,
+)
+from autosysid.data import RawLog
+from autosysid.errors import ConfigError, DataError
+
+DT = 0.002
+
+
+def _run(params: BehaviorParams, commands: np.ndarray, q0: float = 0.0, dt: float = DT) -> np.ndarray:
+    behavior_filter = BehaviorFilter(params, dt=dt, q0=q0)
+    return np.array([behavior_filter.step(command) for command in commands])
+
+
+class TestParams:
+    def test_json_round_trip(self, tmp_path):
+        params = BehaviorParams(delay_s=0.012, tau_s=0.06, deadband_rad=0.005, gravity_rad=0.01, q_horiz_rad=0.3)
+        path = tmp_path / "p.json"
+        params.save(path)
+        assert BehaviorParams.load(path) == params
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [{"delay_s": -0.001}, {"tau_s": 0.0}, {"tau_s": -1.0}, {"deadband_rad": -0.1}, {"delay_s": float("nan")}],
+    )
+    def test_rejects_invalid(self, kwargs):
+        base = {"delay_s": 0.01, "tau_s": 0.05, "deadband_rad": 0.0}
+        with pytest.raises(ConfigError):
+            BehaviorParams(**{**base, **kwargs})
+
+    def test_load_missing_file_is_config_error(self, tmp_path):
+        with pytest.raises(ConfigError):
+            BehaviorParams.load(tmp_path / "nope.json")
+
+
+class TestFilter:
+    def test_pure_delay_shifts_signal(self):
+        params = BehaviorParams(delay_s=0.020, tau_s=1e-4, deadband_rad=0.0)  # lag negligible
+        commands = np.zeros(200)
+        commands[50:] = 1.0
+        output = _run(params, commands)
+        first_move = int(np.argmax(output > 0.5))
+        assert first_move * DT == pytest.approx(50 * DT + 0.020, abs=2 * DT)
+
+    def test_fractional_delay_interpolates(self):
+        params = BehaviorParams(delay_s=0.003, tau_s=1e-4, deadband_rad=0.0)  # 1.5 steps
+        commands = np.zeros(20)
+        commands[5:] = 1.0
+        output = _run(params, commands)
+        assert 0.0 < output[6] < 1.0  # half-way sample, not a hard edge
+
+    def test_step_response_reaches_63_percent_at_tau(self):
+        tau = 0.06
+        params = BehaviorParams(delay_s=0.0, tau_s=tau, deadband_rad=0.0)
+        output = _run(params, np.ones(int(0.5 / DT)))
+        index = int(np.argmax(output >= 1 - np.exp(-1)))
+        assert index * DT == pytest.approx(tau, abs=2 * DT)
+        assert output[-1] == pytest.approx(1.0, abs=1e-3)
+
+    def test_deadband_holds_small_commands(self):
+        params = BehaviorParams(delay_s=0.0, tau_s=0.01, deadband_rad=0.01)
+        output = _run(params, np.full(300, 0.008))  # inside the band
+        assert np.max(np.abs(output)) < 1e-9
+        output = _run(params, np.full(600, 0.05))  # outside: settles d short of the command
+        assert output[-1] == pytest.approx(0.05 - 0.01, abs=1e-6)
+
+    def test_deadband_is_hysteretic(self):
+        params = BehaviorParams(delay_s=0.0, tau_s=0.005, deadband_rad=0.01)
+        up = _run(params, np.full(300, 0.05))[-1]
+        down = _run(params, np.full(300, 0.0), q0=up)[-1]  # command returns to 0
+        assert up == pytest.approx(0.04, abs=1e-6)
+        assert down == pytest.approx(0.01, abs=1e-6)  # stuck d above the command, not back at 0.04 or 0
+
+    def test_constant_gravity_offset_shifts_steady_state(self):
+        params = BehaviorParams(delay_s=0.0, tau_s=0.02, deadband_rad=0.0, gravity_rad=0.02)
+        assert _run(params, np.zeros(400))[-1] == pytest.approx(0.02, abs=1e-6)
+
+    def test_cos_gravity_offset_follows_configuration(self):
+        params = BehaviorParams(delay_s=0.0, tau_s=0.02, deadband_rad=0.0, gravity_rad=0.02, q_horiz_rad=0.5)
+        # fixed point: q = command + g0*cos(q - q_horiz)
+        output = _run(params, np.zeros(1000))[-1]
+        assert output == pytest.approx(0.02 * np.cos(output - 0.5), abs=1e-6)
+
+    def test_reset_restores_initial_state(self):
+        params = BehaviorParams(delay_s=0.01, tau_s=0.05, deadband_rad=0.003)
+        behavior_filter = BehaviorFilter(params, dt=DT, q0=0.1)
+        first = [behavior_filter.step(0.5) for _ in range(50)]
+        behavior_filter.reset(0.1)
+        assert [behavior_filter.step(0.5) for _ in range(50)] == first
+
+    @pytest.mark.parametrize("bad", [float("nan"), float("inf")])
+    def test_rejects_non_finite_command(self, bad):
+        behavior_filter = BehaviorFilter(BehaviorParams(0.01, 0.05, 0.0), dt=DT, q0=0.0)
+        with pytest.raises(DataError):
+            behavior_filter.step(bad)
+
+    def test_rejects_bad_dt(self):
+        with pytest.raises(ConfigError):
+            BehaviorFilter(BehaviorParams(0.01, 0.05, 0.0), dt=0.0, q0=0.0)
+
+
+def _make_log(params: BehaviorParams, seed: int, noise_rad: float = 0.0, joint: str = "wrist_roll") -> RawLog:
+    """A 100 Hz tick-quantized log generated by the model itself (known ground truth)."""
+    rng = np.random.default_rng(seed)
+    times = np.arange(0, 12.0, 0.01)
+    chirp = 0.12 * np.sin(2 * np.pi * (0.3 + 0.5 * times / 12.0) * times)
+    steps = 0.1 * np.sign(np.sin(2 * np.pi * 0.17 * times + rng.uniform(0, 1)))
+    target = np.round((chirp + steps) / RAD_PER_TICK) * RAD_PER_TICK
+    measured = simulate(params, times, target, q0=0.0) + rng.normal(0, noise_rad, len(times))
+    return RawLog(
+        times=times,
+        joints=(joint,),
+        target_rad=target[:, None],
+        measured_rad=measured[:, None],
+        stage="stage2_synthetic",
+    )
+
+
+class TestSimulate:
+    def test_matches_filter_on_fine_grid(self):
+        params = BehaviorParams(delay_s=0.012, tau_s=0.06, deadband_rad=0.004, gravity_rad=0.003)
+        times = np.arange(0, 2.0, 0.01)
+        commands = 0.1 * np.sin(2 * np.pi * 0.7 * times)
+        measured = simulate(params, times, commands, q0=0.0)
+        assert measured.shape == times.shape
+        assert np.all(np.isfinite(measured))
+
+    def test_rejects_mismatched_shapes(self):
+        with pytest.raises(DataError):
+            simulate(BehaviorParams(0.01, 0.05, 0.0), np.arange(10) * 0.01, np.zeros(9), q0=0.0)
+
+    def test_rejects_non_monotonic_times(self):
+        times = np.array([0.0, 0.02, 0.01, 0.03])
+        with pytest.raises(DataError):
+            simulate(BehaviorParams(0.01, 0.05, 0.0), times, np.zeros(4), q0=0.0)
+
+    def test_rms_error_ticks_units(self):
+        measured = np.zeros(10)
+        predicted = np.full(10, 3 * RAD_PER_TICK)
+        assert rms_error_ticks(predicted, measured) == pytest.approx(3.0)
+
+
+class TestFit:
+    def test_recovers_known_parameters(self):
+        truth = BehaviorParams(delay_s=0.016, tau_s=0.062, deadband_rad=0.006, gravity_rad=0.004)
+        logs = [_make_log(truth, seed, noise_rad=0.0005) for seed in (1, 2, 3)]
+        fit = fit_behavior(logs, "wrist_roll")
+        assert fit.params.delay_s == pytest.approx(truth.delay_s, abs=0.004)
+        assert fit.params.tau_s == pytest.approx(truth.tau_s, rel=0.15)
+        assert fit.params.deadband_rad == pytest.approx(truth.deadband_rad, abs=0.002)
+        assert fit.params.gravity_rad == pytest.approx(truth.gravity_rad, abs=0.002)
+        assert fit.rms_ticks < 1.2 * (0.0005 / RAD_PER_TICK)  # near the injected noise floor
+
+    def test_held_out_beats_identity_baseline(self):
+        truth = BehaviorParams(delay_s=0.02, tau_s=0.06, deadband_rad=0.005)
+        train = [_make_log(truth, seed) for seed in (1, 2)]
+        holdout = _make_log(truth, 9)
+        fit = fit_behavior(train, "wrist_roll")
+        column = holdout.column("wrist_roll")
+        predicted = simulate(fit.params, holdout.times, holdout.target_rad[:, column], holdout.measured_rad[0, column])
+        model_error = rms_error_ticks(predicted, holdout.measured_rad[:, column])
+        hold_error = rms_error_ticks(holdout.target_rad[:, column], holdout.measured_rad[:, column])
+        assert model_error < 0.25 * hold_error
+
+    def test_gravity_free_fit_has_zero_offset(self):
+        truth = BehaviorParams(delay_s=0.016, tau_s=0.062, deadband_rad=0.006)
+        fit = fit_behavior([_make_log(truth, 4)], "wrist_roll", fit_gravity=False)
+        assert fit.params.gravity_rad == 0.0
+
+    def test_unknown_joint_raises(self):
+        log = _make_log(BehaviorParams(0.01, 0.05, 0.0), 0)
+        with pytest.raises(DataError):
+            fit_behavior([log], "elbow_flex")
+
+    def test_empty_logs_raise(self):
+        with pytest.raises(DataError):
+            fit_behavior([], "wrist_roll")

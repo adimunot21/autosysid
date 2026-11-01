@@ -1,0 +1,92 @@
+{
+  "shoulder_pan": {
+    "heldout_stages": [
+      "stage2_steps_shoulder_pan"
+    ],
+    "errors_ticks": {
+      "hold_still": 72.07190675319119,
+      "command_as_position": 18.08083206665827,
+      "stock_mjcf": 16.70100936660832,
+      "stock_plus_delay": 4.6293588941038735,
+      "behavior_3param": 2.3937683563474876,
+      "behavior_4param": 2.355113516029393,
+      "wrapped_mjcf": 2.5646283710971547,
+      "mujoco_sysid": null
+    },
+    "behavior_3param": {
+      "delay_s": 0.023295716580550355,
+      "tau_s": 0.05021477616363739,
+      "deadband_rad": 0.006125887260670177,
+      "gravity_rad": 0.0,
+      "q_horiz_rad": null
+    },
+    "behavior_4param": {
+      "delay_s": 0.0232934422987526,
+      "tau_s": 0.05037972648568422,
+      "deadband_rad": 0.006064449022502056,
+      "gravity_rad": -0.0006799003224338515,
+      "q_horiz_rad": null
+    },
+    "stock_delay_s": 0.08
+  },
+  "wrist_flex": {
+    "heldout_stages": [
+      "stage2_steps_wrist_flex"
+    ],
+    "errors_ticks": {
+      "hold_still": 69.67307157153836,
+      "command_as_position": 18.333242488906066,
+      "stock_mjcf": 16.943439698378704,
+      "stock_plus_delay": 7.961186520510203,
+      "behavior_3param": 4.885759094623871,
+      "behavior_4param": 2.153190214234349,
+      "wrapped_mjcf": 2.539275542873256,
+      "mujoco_sysid": null
+    },
+    "behavior_3param": {
+      "delay_s": 0.0038758220911680953,
+      "tau_s": 0.06473688261677883,
+      "deadband_rad": 0.009066235952893402,
+      "gravity_rad": 0.0,
+      "q_horiz_rad": null
+    },
+    "behavior_4param": {
+      "delay_s": 0.0041920089614174,
+      "tau_s": 0.06281971334794031,
+      "deadband_rad": 0.00960392206830924,
+      "gravity_rad": 0.006833398381278197,
+      "q_horiz_rad": null
+    },
+    "stock_delay_s": 0.08
+  },
+  "wrist_roll": {
+    "heldout_stages": [
+      "stage2_steps_wrist_roll"
+    ],
+    "errors_ticks": {
+      "hold_still": 71.0819866229821,
+      "command_as_position": 17.641727511993356,
+      "stock_mjcf": 16.16162813962701,
+      "stock_plus_delay": 5.814253173036902,
+      "behavior_3param": 2.221397518007369,
+      "behavior_4param": 2.1389309748176877,
+      "wrapped_mjcf": 2.5379742082860193,
+      "mujoco_sysid": 2.2717789362917205
+    },
+    "behavior_3param": {
+      "delay_s": 0.004645095681869244,
+      "tau_s": 0.06666310109849986,
+      "deadband_rad": 0.006926424314986286,
+      "gravity_rad": 0.0,
+      "q_horiz_rad": null
+    },
+    "behavior_4param": {
+      "delay_s": 0.005002824925179736,
+      "tau_s": 0.06610085167768667,
+      "deadband_rad": 0.0070003531597476664,
+      "gravity_rad": 0.0008616971518294012,
+      "q_horiz_rad": null
+    },
+    "stock_delay_s": 0.08
+  }
+}

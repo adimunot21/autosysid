@@ -1,0 +1,23 @@
+{
+  "shoulder_pan": {
+    "delay_s": 0.027245042608237926,
+    "tau_s": 0.051514790233772895,
+    "deadband_rad": 0.005652111021764646,
+    "gravity_rad": -0.0006758379445711941,
+    "q_horiz_rad": null
+  },
+  "wrist_flex": {
+    "delay_s": 0.008800667935035787,
+    "tau_s": 0.06310017705554737,
+    "deadband_rad": 0.009380965546672846,
+    "gravity_rad": 0.006829705128608643,
+    "q_horiz_rad": null
+  },
+  "wrist_roll": {
+    "delay_s": 0.008623485698219675,
+    "tau_s": 0.06740403504831625,
+    "deadband_rad": 0.006635900112890214,
+    "gravity_rad": 0.0008655491179498693,
+    "q_horiz_rad": null
+  }
+}

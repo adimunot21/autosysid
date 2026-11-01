@@ -178,3 +178,59 @@ def test_demo_runs_the_whole_pipeline_and_recovers_the_known_answer(tmp_path):
     validation = json.loads((tmp_path / "demo" / "validation.json").read_text())["shoulder_pan"]
     assert validation["improvement"] > 3 and validation["rms_fitted_rad"] < 0.0025
     assert "Demo ground truth" in result.output
+
+
+# ---- behavioral model commands ---------------------------------------------------------------------------------------
+
+
+def test_behavior_sweep_shrinks_heavy_joints_and_is_recorded(tmp_path):
+    shutil.copy(MINI_ARM_XML, tmp_path / "arm.xml")
+    args = ["record", "--mock", "--xml", str(tmp_path / "arm.xml"), "--stages", "1", "--joints", "shoulder_lift"]
+    plain = runner.invoke(app, [*args, "--run-dir", str(tmp_path / "plain")])
+    swept = runner.invoke(app, [*args, "--behavior-sweep", "--run-dir", str(tmp_path / "swept")])
+    assert plain.exit_code == 0 and swept.exit_code == 0, swept.output
+    config = json.loads((tmp_path / "swept" / "record.json").read_text())["config"]
+    assert config["joint_amplitude_factors"] == {"shoulder_lift": 0.6}
+    assert json.loads((tmp_path / "plain" / "record.json").read_text())["config"]["joint_amplitude_factors"] == {}
+
+    import numpy as np
+
+    from autosysid.data import RawLog
+
+    def peak(run):
+        log = RawLog.load(next((tmp_path / run / "raw").glob("stage1_step*.npz")))
+        return float(np.ptp(log.target_rad[:, log.column("shoulder_lift")]))
+
+    assert peak("swept") == pytest.approx(0.6 * peak("plain"), rel=0.05)
+
+
+def test_fit_behavior_writes_params_that_the_wrapper_can_load(tmp_path):
+    import mujoco
+
+    from autosysid.sim_wrapper import STS3215SimWrapper
+
+    shutil.copy(MINI_ARM_XML, tmp_path / "arm.xml")
+    run = tmp_path / "run"
+    recorded = runner.invoke(
+        app, ["record", "--mock", "--xml", str(tmp_path / "arm.xml"), "--run-dir", str(run), "--stages", "1,2"]
+    )
+    assert recorded.exit_code == 0, recorded.output
+    out = tmp_path / "params.json"
+    result = runner.invoke(
+        app, ["fit-behavior", str(run), "--joint", "shoulder_pan", "--holdout-steps", "--out", str(out)]
+    )
+    assert result.exit_code == 0, result.output
+    assert "shoulder_pan" in result.output and "held-out" in result.output
+    model = mujoco.MjModel.from_xml_path(str(MINI_ARM_XML))
+    wrapper = STS3215SimWrapper.from_json(model, mujoco.MjData(model), out)
+    assert set(wrapper.params) == {"shoulder_pan"}
+
+
+def test_fit_behavior_merges_into_existing_file_and_reports_missing_logs(tmp_path):
+    out = tmp_path / "params.json"
+    out.write_text(json.dumps({"wrist_roll": {"delay_s": 0.01, "tau_s": 0.06, "deadband_rad": 0.005}}))
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    result = runner.invoke(app, ["fit-behavior", str(empty), "--joint", "shoulder_pan", "--out", str(out)])
+    assert result.exit_code != 0
+    assert "wrist_roll" in out.read_text()  # untouched on failure

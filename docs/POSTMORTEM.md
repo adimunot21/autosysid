@@ -91,3 +91,36 @@ For a position-controlled STS3215 that is the part that fails. Before adopting i
 
 Code is kept as is, with 166 passing fast tests. Run data is not committed. See README.md for usage and
 `docs/data-contract.md` for every bus and SDK finding.
+
+## Addendum (2026-11-01): the behavioral model, reproduced and wrapped
+
+The four-number model is now code (`src/autosysid/behavior.py`) with tests, a MuJoCo wrapper
+(`src/autosysid/sim_wrapper.py`, `STS3215SimWrapper`) and a reproduction script (`scripts/reproduce_postmortem.py`)
+that reads the committed logs in `hardware_logs/`. Held-out RMS error in ticks (held out = the stage-2 "steps"
+segment, fitted on the rest; a fresh stage-3 holdout is still to be recorded):
+
+| Joint | Hold still | Stock MJCF | Stock + best delay | 3-param | 4-param | 4-param in MJCF |
+|---|---|---|---|---|---|---|
+| shoulder_pan | 72.1 | 16.7 | 4.6 | 2.39 | 2.36 | 2.56 |
+| wrist_flex | 69.7 | 16.9 | 8.0 | 4.89 | 2.15 | 2.54 |
+| wrist_roll | 71.1 | 16.2 | 5.8 | 2.22 | 2.14 | 2.54 |
+
+What this changes about the original claims:
+
+- **The "1.20 ticks" is not a held-out number.** Fitting on all logs gives 1.2-1.5 ticks in-sample. On held-out data the
+  error is 2.1-2.4 ticks, and 0.98-1.7 when the slow ramp is held out but 2.7-2.9 when the chirp is. The model is
+  weakest at higher frequency, which is what a 1.5-2 Hz feedforward will exercise.
+- **Delay is not identifiable at 100 Hz.** The fitted Td for the same joint moves between 4 and 16 ms depending on
+  which segment is held out (wrist_roll); tau (50-67 ms) and the deadband (4-6 ticks) are stable.
+- **The "5.36 ticks stock" figure is not reproduced.** A plain stock-MJCF rollout scores about 16-17 ticks, the same as
+  using the command as the position, because the stock actuator has no lag. 5.36 must have included a fitted delay
+  and an excluded start window (mujoco.sysid does both). Against *stock + best delay* (the fair baseline) the
+  4-parameter model is 2.0-3.7x better, against plain stock 7-8x.
+- **Gravity matters on wrist_flex only** among the three joints tested (4.89 -> 2.15 ticks with a constant offset). The
+  cosine form `g0*cos(q - q_horiz)` could not be tested: shoulder_lift, elbow_flex and gripper have no data yet.
+  `q_horiz` comes from the MJCF (`src/autosysid/gravity.py`; -142 deg and -178 deg for shoulder_lift and elbow_flex on the
+  vendored model), not from the fit, because a single small sweep cannot separate it from `g0`.
+- **The stock actuator must not sit under the filter.** Its forcerange saturates on a 0.5 rad step (108 ticks of error)
+  and adds ~8 ms of lag; `ideal_actuator_model` removes both and is required for the wrapper.
+- `mujoco.sysid` (wrist_roll, 2.27 ticks) remains the only reference number; its split was not saved, so it is
+  carried as a flagged value in `results/sysid_reference.json`.

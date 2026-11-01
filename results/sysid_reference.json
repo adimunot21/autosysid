@@ -1,0 +1,8 @@
+{
+  "source": "runs/sysid_exp_B.json (autosysid fit on wrist_roll, 571 s, 6 restarts; not reproducible in seconds)",
+  "joint": "wrist_roll",
+  "heldout_stock_ticks": 5.3560315774701355,
+  "heldout_sysid_ticks": 2.2717789362917205,
+  "cost_over_noise_floor": 31.68201175640922,
+  "protocol_caveat": "held-out split and nominal-model delay handling of this run were not saved; the numbers are NOT directly comparable with the reproduced columns."
+}

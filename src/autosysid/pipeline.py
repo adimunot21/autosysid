@@ -80,7 +80,14 @@ def record(
     confirm: Callable[[PreflightReport], bool] | None = None,
 ) -> list[RawLog]:
     plan = build_plan(
-        config.joints, bus.joints, config.control_rate_hz, config.amplitude_scale, config.safety, config.seed, stages
+        config.joints,
+        bus.joints,
+        config.control_rate_hz,
+        config.amplitude_scale,
+        config.safety,
+        config.seed,
+        stages,
+        joint_amplitude_factors=config.joint_amplitude_factors,
     )
     logs = Recorder(bus, calibration, config, clock).run(plan, xml_path=xml_path, progress=progress, confirm=confirm)
     for recorded in logs:

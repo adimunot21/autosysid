@@ -15,6 +15,7 @@ dependencies = [
     # Pinned exactly: behaviour verified only on 3.16.0 (see docs/data-contract.md).
     "mujoco[sysid]==3.16.0",
     "numpy>=2.0,<3",
+    "scipy>=1.11",  # behavior.py least-squares fit (already pulled in by mujoco[sysid]; declared because it is imported)
     "typer>=0.12",
     "rich>=13",
     "pyyaml>=6",
@@ -23,6 +24,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.5"]
+plots = ["matplotlib>=3.8"]  # scripts/reproduce_postmortem.py residual plots
 
 [project.scripts]
 autosysid = "autosysid.cli:run"

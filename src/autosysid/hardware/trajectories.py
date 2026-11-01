@@ -10,6 +10,7 @@ bus. The plan is deliberately conservative on first use (`amplitude_scale`), siz
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -57,20 +58,29 @@ def build_plan(
     limits: SafetyLimits,
     seed: int = 0,
     stages: tuple[int, ...] = (1, 2, 3),
+    joint_amplitude_factors: Mapping[str, float] | None = None,
 ) -> list[Segment]:
-    """Segments in execution order. `amplitude_scale` scales amplitudes and step slew rate together."""
+    """Segments in execution order. `amplitude_scale` scales amplitudes and step slew rate together.
+
+    `joint_amplitude_factors` (each in (0, 1]) further shrinks individual joints, e.g. gravity-loaded ones; the
+    signal is scaled after generation, so slew rates shrink with it (more conservative, never less).
+    """
     unknown = [name for name in excited if name not in bus_joints]
     if unknown or not excited:
         raise ConfigError(f"excited joints {excited} must be a non-empty subset of the bus joints {bus_joints}")
     if not 0 < amplitude_scale <= 1:
         raise ConfigError("amplitude_scale must be in (0, 1]")
+    factors = dict(joint_amplitude_factors or {})
+    for name, factor in factors.items():
+        if name not in bus_joints or not 0 < factor <= 1:
+            raise ConfigError(f"joint_amplitude_factors['{name}']={factor}: need a bus joint and a factor in (0, 1]")
     max_rate = limits.max_goal_rate_rad_s
     rng = np.random.default_rng(seed)
     segments: list[Segment] = []
 
     def single(name: str, stage: str, joint: str, times: np.ndarray, signal: np.ndarray) -> Segment:
         offsets = np.zeros((len(times), len(bus_joints)))
-        offsets[:, bus_joints.index(joint)] = signal
+        offsets[:, bus_joints.index(joint)] = signal * factors.get(joint, 1.0)
         return Segment(f"{stage}_{name}_{joint}", stage, "fit", (joint,), times, offsets)
 
     for joint in excited:  # bus order is proximal -> distal
@@ -93,7 +103,11 @@ def build_plan(
             offsets = np.zeros((len(times), len(bus_joints)))
             for joint in excited:
                 offsets[:, bus_joints.index(joint)] = multisine(
-                    times, STAGE3_FREQUENCIES_HZ, STAGE3_AMPLITUDE_RAD * amplitude_scale, rng, taper_s=2.0
+                    times,
+                    STAGE3_FREQUENCIES_HZ,
+                    STAGE3_AMPLITUDE_RAD * amplitude_scale * factors.get(joint, 1.0),
+                    rng,
+                    taper_s=2.0,
                 )
             segments.append(Segment(f"stage3_multisine_{role}", "stage3", role, excited, times, offsets))
     return segments

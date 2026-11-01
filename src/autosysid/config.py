@@ -84,9 +84,14 @@ class RecordConfig:
     amplitude_scale: float = 1.0  # global multiplier on all excitation amplitudes; use < 1 for first bring-up runs
     safety: SafetyLimits = field(default_factory=SafetyLimits)
     seed: int = 0  # multisine phases; fixed so runs are repeatable
+    # per-joint multiplier on top of amplitude_scale (hardware/sweeps.py BEHAVIOR_SWEEP_FACTORS for the heavy joints)
+    joint_amplitude_factors: dict[str, float] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         _require(self.baudrate > 0, "baudrate must be > 0")
+        for name, factor in self.joint_amplitude_factors.items():
+            _require(name in JOINT_NAMES, f"joint_amplitude_factors: unknown joint '{name}'")
+            _require(0.0 < factor <= 1.0, f"joint_amplitude_factors['{name}'] must be in (0, 1], got {factor}")
         _require(10.0 <= self.control_rate_hz <= 500.0, "control_rate_hz must be in [10, 500] (sync-read ~1.3 ms)")
         _require(len(self.joints) > 0, "joints must not be empty")
         unknown = [name for name in self.joints if name not in JOINT_NAMES]

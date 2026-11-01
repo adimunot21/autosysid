@@ -26,6 +26,7 @@ from autosysid import __version__, pipeline
 from autosysid.config import ARM_JOINT_NAMES, FitConfig, RecordConfig, SafetyLimits
 from autosysid.errors import AutoSysIDError
 from autosysid.exporter import export_calibrated
+from autosysid.hardware.sweeps import BEHAVIOR_SWEEP_FACTORS
 from autosysid.logging_utils import setup_logging
 from autosysid.mock import DEMO_DELAY_S, DEMO_TRUTH_SCALE, MINI_ARM_XML, MockArm
 
@@ -145,12 +146,18 @@ def _print_validation(results) -> None:
     console.print(table)
 
 
-def _record_config(bus, mock, port, baudrate, joints, amplitude_scale, torque_limit, hold_at_end=True) -> RecordConfig:
+def _record_config(
+    bus, mock, port, baudrate, joints, amplitude_scale, torque_limit, hold_at_end=True, behavior_sweep=False
+) -> RecordConfig:
     default = (bus.joints[0],) if mock else ARM_JOINT_NAMES
+    chosen = pipeline.parse_joints(joints, bus.joints) if joints else default
     return RecordConfig(
         port=port,
         baudrate=baudrate,
-        joints=pipeline.parse_joints(joints, bus.joints) if joints else default,
+        joints=chosen,
+        joint_amplitude_factors={n: f for n, f in BEHAVIOR_SWEEP_FACTORS.items() if n in chosen}
+        if behavior_sweep
+        else {},
         amplitude_scale=amplitude_scale,
         safety=SafetyLimits(torque_limit_fraction=torque_limit, release_torque_at_end=not hold_at_end),
     )
@@ -230,13 +237,22 @@ def record(
             "release it yourself with `autosysid release`.",
         ),
     ] = True,
+    behavior_sweep: Annotated[
+        bool,
+        typer.Option(
+            "--behavior-sweep",
+            help="Shrink shoulder_lift / elbow_flex / gripper by their first-use factors (hardware/sweeps.py).",
+        ),
+    ] = False,
     yes: Annotated[bool, typer.Option("--yes", help="Skip the confirmation prompt.")] = False,
 ) -> None:
     """Run the excitation plan (pre-flight first) and save the raw logs to the run directory."""
     stage_tuple = pipeline.parse_stages(stages)
     bus, arm_calibration, clock = pipeline.open_bus(xml, mock, port, baudrate, calibration)
     try:
-        config = _record_config(bus, mock, port, baudrate, joints, amplitude_scale, torque_limit, hold_at_end)
+        config = _record_config(
+            bus, mock, port, baudrate, joints, amplitude_scale, torque_limit, hold_at_end, behavior_sweep
+        )
         path = _run_dir(run_dir)
         with console.status("recording..."):
             logs = pipeline.record(
@@ -262,6 +278,72 @@ def _warn_if_holding(config: RecordConfig, mock: bool) -> None:
         "[bold yellow]The arm is still HOLDING (torque ON).[/bold yellow] Support it, then run "
         "[bold]autosysid release[/bold] to let it go limp."
     )
+
+
+@app.command(name="fit-behavior")
+def fit_behavior_command(
+    log_dirs: Annotated[list[Path], typer.Argument(help="Directories searched recursively for recorded .npz logs.")],
+    joint: Annotated[str, typer.Option(help="Joint to fit.")],
+    out: Annotated[Path, typer.Option(help="Parameter file; this joint's entry is added or replaced.")] = Path(
+        "results/behavior_params.json"
+    ),
+    holdout_steps: Annotated[
+        bool, typer.Option("--holdout-steps", help="Hold the stage-2 steps segment out and report its error.")
+    ] = False,
+    gravity_xml: Annotated[
+        Path | None,
+        typer.Option(
+            help="MJCF to take q_horiz from (cos gravity model; other joints at qpos0). Default: constant offset."
+        ),
+    ] = None,
+) -> None:
+    """Fit the 4-parameter behavioral model (delay, lag, deadband, gravity offset) from logs. Needs no hardware."""
+    import json
+
+    import mujoco
+    import numpy as np
+
+    from autosysid import behavior
+    from autosysid.data import RawLog
+    from autosysid.errors import DataError
+    from autosysid.evaluation import split_logs
+    from autosysid.gravity import gravity_phase_from_mjcf
+    from autosysid.sim_wrapper import STS3215SimWrapper
+
+    paths = sorted(path for directory in log_dirs for path in directory.rglob("*.npz"))
+    logs = [log for log in (RawLog.load(path) for path in paths) if joint in log.meta.get("excited", [])]
+    if not logs:
+        raise DataError(f"no log under {[str(d) for d in log_dirs]} excites '{joint}'")
+    q_horiz = None
+    if gravity_xml is not None:
+        phase = gravity_phase_from_mjcf(mujoco.MjModel.from_xml_path(str(gravity_xml)), joint)
+        q_horiz = phase.q_horiz_rad
+        console.print(f"q_horiz from MJCF: {q_horiz:+.3f} rad (peak torque {phase.torque_amplitude_nm:.2f} N.m)")
+    fit_logs, held_logs = split_logs(logs, joint) if holdout_steps else (logs, [])
+    fit = behavior.fit_behavior(fit_logs, joint, q_horiz_rad=q_horiz)
+    p = fit.params
+    tick = behavior.RAD_PER_TICK
+    console.print(
+        f"{joint}: delay {p.delay_s * 1e3:.1f} ms, tau {p.tau_s * 1e3:.1f} ms, "
+        f"deadband {p.deadband_rad / tick:.1f} ticks, gravity {p.gravity_rad / tick:+.1f} ticks; "
+        f"train RMS {fit.rms_ticks:.2f} ticks on {len(fit_logs)} log(s)"
+    )
+    if fit.at_bounds:
+        console.print(f"[bold yellow]warning: finished on a bound: {', '.join(fit.at_bounds)}[/bold yellow]")
+    if held_logs:
+        predicted, measured = [], []
+        for held_log in held_logs:
+            column = held_log.column(joint)
+            observed = held_log.measured_rad[:, column]
+            measured.append(observed)
+            predicted.append(behavior.simulate(p, held_log.times, held_log.target_rad[:, column], observed[0]))
+        held = behavior.rms_error_ticks(np.concatenate(predicted), np.concatenate(measured))
+        console.print(f"held-out ({', '.join(h.stage for h in held_logs)}): RMS {held:.2f} ticks")
+    existing = json.loads(out.read_text()) if out.is_file() else {}
+    merged = {name: behavior.BehaviorParams(**values) for name, values in existing.items()}
+    merged[joint] = p
+    STS3215SimWrapper.save_params(out, merged)
+    console.print(f"wrote [bold]{out}[/bold]")
 
 
 @app.command()

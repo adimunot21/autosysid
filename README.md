@@ -6,7 +6,7 @@ The pipeline works on a simulated arm. On the real arm it fails to separate the 
 
 ## Why it failed on hardware
 
-The servo's internal position loop hides almost all of the arm's dynamics. It never saturated in any test, so the recorded data supports only a delay, a first-order lag, a deadband and a gravity offset for each joint. `mujoco.sysid` fitted worse than a three-parameter model on held-out data. Tested joints: wrist_roll, shoulder_pan and wrist_flex. Untested: elbow_flex, shoulder_lift and gripper. The final check, whether the fitted model brings the simulation closer to the real arm, was not done.
+The servo's internal position loop hides almost all of the arm's dynamics. It never saturated in any test, so the recorded data supports only a delay, a first-order lag, a deadband and a gravity offset for each joint. `mujoco.sysid` fitted worse than a three-parameter model on held-out data. Tested joints: wrist_roll, shoulder_pan and wrist_flex. Untested: elbow_flex, shoulder_lift and gripper (sweep tooling now exists; no data yet). The behavioral model is now code: `src/autosysid/behavior.py`, `STS3215SimWrapper` in `src/autosysid/sim_wrapper.py`, and `scripts/reproduce_postmortem.py` / `scripts/validate_wrapper.py`. On held-out wrist_roll, shoulder_pan and wrist_flex data the wrapped MJCF is 6.4-6.7x closer to the real arm than the stock MJCF (see the addendum in the post-mortem for the caveats).
 
 ## What works
 
