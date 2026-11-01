@@ -290,6 +290,13 @@ def fit_behavior_command(
     holdout_steps: Annotated[
         bool, typer.Option("--holdout-steps", help="Hold the stage-2 steps segment out and report its error.")
     ] = False,
+    load_dependent_deadband: Annotated[
+        bool,
+        typer.Option(
+            "--load-dependent-deadband",
+            help="Also fit d1 in d(q) = d0 + d1*|cos(q - q_horiz)|. Needs --gravity-xml and logs from >= 2 base poses.",
+        ),
+    ] = False,
     gravity_xml: Annotated[
         Path | None,
         typer.Option(
@@ -320,12 +327,14 @@ def fit_behavior_command(
         q_horiz = phase.q_horiz_rad
         console.print(f"q_horiz from MJCF: {q_horiz:+.3f} rad (peak torque {phase.torque_amplitude_nm:.2f} N.m)")
     fit_logs, held_logs = split_logs(logs, joint) if holdout_steps else (logs, [])
-    fit = behavior.fit_behavior(fit_logs, joint, q_horiz_rad=q_horiz)
+    fit = behavior.fit_behavior(fit_logs, joint, q_horiz_rad=q_horiz, fit_deadband_gravity=load_dependent_deadband)
     p = fit.params
     tick = behavior.RAD_PER_TICK
     console.print(
         f"{joint}: delay {p.delay_s * 1e3:.1f} ms, tau {p.tau_s * 1e3:.1f} ms, "
-        f"deadband {p.deadband_rad / tick:.1f} ticks, gravity {p.gravity_rad / tick:+.1f} ticks; "
+        f"deadband {p.deadband_rad / tick:.1f}"
+        + (f" + {p.deadband_gravity_rad / tick:.1f}*|cos|" if p.deadband_gravity_rad else "")
+        + f" ticks, gravity {p.gravity_rad / tick:+.1f} ticks; "
         f"train RMS {fit.rms_ticks:.2f} ticks on {len(fit_logs)} log(s)"
     )
     if fit.at_bounds:

@@ -203,6 +203,7 @@ def _params_to_dict(params: BehaviorParams) -> dict[str, float | None]:
         "deadband_rad": params.deadband_rad,
         "gravity_rad": params.gravity_rad,
         "q_horiz_rad": params.q_horiz_rad,
+        "deadband_gravity_rad": params.deadband_gravity_rad,
     }
 
 

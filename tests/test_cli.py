@@ -234,3 +234,23 @@ def test_fit_behavior_merges_into_existing_file_and_reports_missing_logs(tmp_pat
     result = runner.invoke(app, ["fit-behavior", str(empty), "--joint", "shoulder_pan", "--out", str(out)])
     assert result.exit_code != 0
     assert "wrist_roll" in out.read_text()  # untouched on failure
+
+
+def test_fit_behavior_load_dependent_deadband_needs_gravity_xml(tmp_path):
+    shutil.copy(MINI_ARM_XML, tmp_path / "arm.xml")
+    run = tmp_path / "run"
+    runner.invoke(app, ["record", "--mock", "--xml", str(tmp_path / "arm.xml"), "--run-dir", str(run), "--stages", "1"])
+    result = runner.invoke(
+        app,
+        [
+            "fit-behavior",
+            str(run),
+            "--joint",
+            "shoulder_pan",
+            "--load-dependent-deadband",
+            "--out",
+            str(tmp_path / "p.json"),
+        ],
+    )
+    assert result.exit_code != 0
+    assert not (tmp_path / "p.json").exists()

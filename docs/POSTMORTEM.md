@@ -124,3 +124,27 @@ What this changes about the original claims:
   and adds ~8 ms of lag; `ideal_actuator_model` removes both and is required for the wrapper.
 - `mujoco.sysid` (wrist_roll, 2.27 ticks) remains the only reference number; its split was not saved, so it is
   carried as a flagged value in `results/sysid_reference.json`.
+
+### Addendum 2 (2026-11-01): shoulder_lift, three base poses
+
+shoulder_lift was recorded at base poses +4 deg, -50 deg and +47 deg (`hardware_logs/shoulder_lift/pose{1,2,3}`; an
+earlier +47 deg attempt with the elbow straight hit the table and was discarded).
+
+- **Gravity is the dominant effect on this joint and the cos form is right.** Sag at the three poses is about +19, +2 and
+  +24-29 ticks. `g0 = -23 ticks` fitted from poses 1+2 alone predicts pose 3 at +22.9; `q_horiz = -142 deg` comes
+  from the MJCF, not the fit. A constant offset fitted on one pose is worse than no model on another (18.7 vs 16.7 ticks).
+- **The deadband is not constant.** Fitted per pose: d = 3.9 / 14.0 / 19.2 ticks at |cos(q - q_horiz)| = 0.04 / 0.82 / 0.99.
+  `BehaviorParams.deadband_gravity_rad` (d1) adds `d(q) = d0 + d1*|cos|`, optional and off by default (old
+  parameter files load unchanged).
+- **Leave-one-pose-out (fit on two poses, score the third, no refit):**
+
+| Held-out pose | 4-param, shared d | 5-param, d0 + d1 abs(cos) | target as position |
+|---|---|---|---|
+| +4 deg | 5.81 | 5.85 | 27.4 |
+| -50 deg | 9.44 | 4.79 | 16.7 |
+| +47 deg | 9.43 | 6.61 | 33.2 |
+
+  In-sample, all three poses: 6.07 vs 3.91 ticks. The -50 deg case is extrapolation to the unloaded joint, and `d0`
+  hits its zero bound when both training poses are heavily loaded; a fourth pose near |cos| = 0 would constrain it.
+- Fit with `autosysid fit-behavior ... --gravity-xml scene.xml --load-dependent-deadband`.
+- Delay (20-38 ms) and tau (33-53 ms) remain loosely identified across poses and splits.

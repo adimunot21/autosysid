@@ -8,6 +8,8 @@ position logs (docs/POSTMORTEM.md). What *is* identifiable is the closed-loop be
     Td   transport delay (s)              bus write -> servo acts on it
     tau  first-order lag time constant (s)
     d    deadband half-width (rad)        modelled as a "play" operator (hysteresis), not a dead zone around zero
+         optionally load dependent:       d(q) = d0 + d1 * |cos(q - q_horiz)|   (stiction grows with gravity load;
+         shoulder_lift fitted d = 3.9 / 14 / 19 ticks at |cos| = 0.04 / 0.82 / 0.99)
     g(q) command offset (rad) from gravity/steady-state error:  g0                 (horizontal joints)
                                                                g0 * cos(q - q_horiz) (gravity-loaded joints)
 
@@ -51,10 +53,22 @@ CONFIG = {
     "sim_dt_s": 0.005,
     # Bounds are wide enough to contain every value seen on hardware (Td 10-30 ms, tau 50-70 ms, d 3.5-6 ticks)
     # so a fit that sits on a bound is a signal, not a constraint.
-    "bounds": {"delay_s": (0.0, 0.08), "tau_s": (0.005, 0.3), "deadband_rad": (0.0, 0.05), "gravity_rad": (-0.1, 0.1)},
+    "bounds": {
+        "delay_s": (0.0, 0.08),
+        "tau_s": (0.005, 0.3),
+        "deadband_rad": (0.0, 0.05),
+        "gravity_rad": (-0.1, 0.1),
+        "deadband_gravity_rad": (0.0, 0.05),
+    },
     # Parameter scales for the optimizer: roughly the size of a typical value, so finite-difference steps are
     # comparable across parameters.
-    "scales": {"delay_s": 0.01, "tau_s": 0.05, "deadband_rad": 0.005, "gravity_rad": 0.005},
+    "scales": {
+        "delay_s": 0.01,
+        "tau_s": 0.05,
+        "deadband_rad": 0.005,
+        "gravity_rad": 0.005,
+        "deadband_gravity_rad": 0.005,
+    },
     # The deadband makes the cost piecewise smooth; a 5% relative step crosses the quantisation of the data instead of
     # differentiating noise.
     "diff_step": 0.05,
@@ -73,9 +87,10 @@ class BehaviorParams:
     deadband_rad: float
     gravity_rad: float = 0.0
     q_horiz_rad: float | None = None
+    deadband_gravity_rad: float = 0.0  # d1: extra deadband at full gravity load; needs q_horiz_rad
 
     def __post_init__(self) -> None:
-        for name in ("delay_s", "tau_s", "deadband_rad", "gravity_rad"):
+        for name in ("delay_s", "tau_s", "deadband_rad", "gravity_rad", "deadband_gravity_rad"):
             if not math.isfinite(getattr(self, name)):
                 raise ConfigError(f"{name} must be finite, got {getattr(self, name)}")
         if self.q_horiz_rad is not None and not math.isfinite(self.q_horiz_rad):
@@ -86,12 +101,22 @@ class BehaviorParams:
             raise ConfigError(f"tau_s must be > 0, got {self.tau_s}")
         if self.deadband_rad < 0:
             raise ConfigError(f"deadband_rad must be >= 0, got {self.deadband_rad}")
+        if self.deadband_gravity_rad < 0:
+            raise ConfigError(f"deadband_gravity_rad must be >= 0, got {self.deadband_gravity_rad}")
+        if self.deadband_gravity_rad != 0 and self.q_horiz_rad is None:
+            raise ConfigError("deadband_gravity_rad needs q_horiz_rad (the load angle it depends on)")
 
     def gravity_offset(self, q: float) -> float:
         """Command offset g(q) at joint angle `q` (rad)."""
         if self.q_horiz_rad is None:
             return self.gravity_rad
         return self.gravity_rad * math.cos(q - self.q_horiz_rad)
+
+    def deadband_at(self, q: float) -> float:
+        """Deadband half-width (rad) at joint angle `q`: d0 + d1*|cos(q - q_horiz)|."""
+        if self.deadband_gravity_rad == 0.0 or self.q_horiz_rad is None:
+            return self.deadband_rad
+        return self.deadband_rad + self.deadband_gravity_rad * abs(math.cos(q - self.q_horiz_rad))
 
     def save(self, path: Path) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -157,7 +182,7 @@ class BehaviorFilter:
         configuration = self.state if q is None else q
         effective = delayed + params.gravity_offset(configuration)
 
-        band = params.deadband_rad
+        band = params.deadband_at(configuration)
         if effective - self._play > band:
             self._play = effective - band
         elif effective - self._play < -band:
@@ -221,7 +246,7 @@ class BehaviorFit:
     at_bounds: tuple[str, ...]  # parameters that finished on a bound: treat the fit as unreliable
 
 
-_FIT_NAMES = ("delay_s", "tau_s", "deadband_rad", "gravity_rad")
+_FIT_NAMES = ("delay_s", "tau_s", "deadband_rad", "gravity_rad", "deadband_gravity_rad")
 
 
 def fit_behavior(
@@ -229,12 +254,17 @@ def fit_behavior(
     joint: str,
     fit_gravity: bool = True,
     q_horiz_rad: float | None = None,
+    fit_deadband_gravity: bool = False,
 ) -> BehaviorFit:
     """Least-squares fit of Td, tau, d and (optionally) g0 for `joint` over all `logs`.
 
     Each log starts from its own measured q0 and first command. `q_horiz_rad` is NOT fitted: over the small
     excursions of a sweep it is not separable from g0, so pass the geometry value (None = constant offset).
+    `fit_deadband_gravity` adds d1 (load-dependent deadband); it needs `q_horiz_rad`, `fit_gravity`, and logs from
+    base poses with different load, otherwise d0 and d1 are not separable.
     """
+    if fit_deadband_gravity and (q_horiz_rad is None or not fit_gravity):
+        raise ConfigError("fit_deadband_gravity needs q_horiz_rad and fit_gravity=True")
     if not logs:
         raise DataError("no logs to fit")
     series = []
@@ -243,7 +273,7 @@ def fit_behavior(
         series.append((log.times, log.target_rad[:, column], log.measured_rad[:, column]))
     n_samples = sum(len(measured) for _, _, measured in series)
 
-    names = _FIT_NAMES if fit_gravity else _FIT_NAMES[:3]
+    names = _FIT_NAMES[: 5 if fit_deadband_gravity else 4 if fit_gravity else 3]
     scales = np.array([CONFIG["scales"][name] for name in names])
     lower = np.array([CONFIG["bounds"][name][0] for name in names]) / scales
     upper = np.array([CONFIG["bounds"][name][1] for name in names]) / scales
@@ -260,7 +290,7 @@ def fit_behavior(
 
     best = None
     for delay_start, tau_start in CONFIG["starts"]:
-        start = [delay_start, tau_start, 0.004, 0.001][: len(names)]
+        start = [delay_start, tau_start, 0.004, 0.001, 0.004][: len(names)]
         scaled_start = np.clip(np.array(start) / scales, lower + 1e-6, upper - 1e-6)
         result = least_squares(
             residuals,
