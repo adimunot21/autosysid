@@ -356,6 +356,69 @@ def fit_behavior_command(
 
 
 @app.command()
+def move(
+    to_ticks: Annotated[
+        list[str],
+        typer.Option("--to-ticks", help="JOINT=TICKS, repeatable, e.g. --to-ticks shoulder_lift=1900."),
+    ],
+    port: PortOption = DEFAULT_PORT,
+    calibration: CalibrationOption = None,
+    baudrate: int = 1_000_000,
+    mock: MockOption = False,
+    xml: Annotated[Path, typer.Option("--xml")] = MINI_ARM_XML,
+    rate: Annotated[float, typer.Option(help="Joint speed cap in rad/s (default 0.3, about 17 deg/s).")] = 0.3,
+    yes: Annotated[bool, typer.Option("--yes", help="Skip the confirmation prompt.")] = False,
+) -> None:
+    """Move named joints to a tick position, slowly, with torque ON throughout. Other joints hold still.
+
+    Goes through the same limiter and watchdogs as a recording; targets outside the soft limits are refused.
+    It cannot see obstacles: confirm the path is clear first. Torque stays on at the end.
+    """
+    import numpy as np
+
+    from autosysid.errors import ConfigError
+    from autosysid.hardware.clock import SimClock
+    from autosysid.hardware.mover import move_to
+
+    bus, arm_calibration, clock = pipeline.open_bus(xml, mock, port, baudrate, calibration)
+    try:
+        targets: dict[str, float] = {}
+        for spec in to_ticks:
+            name, separator, text = spec.partition("=")
+            try:
+                ticks = int(text)
+            except ValueError:
+                ticks = -1
+            if not separator or name not in bus.joints or not 0 <= ticks <= 4095:
+                raise ConfigError(f"--to-ticks expects JOINT=TICKS (0-4095) with a known joint, got '{spec}'")
+            targets[name] = float(arm_calibration.joints[name].ticks_to_rad(ticks))
+        present = arm_calibration.ticks_to_rad(bus.read_state().position_ticks)
+        for name, goal in targets.items():
+            index = bus.joints.index(name)
+            console.print(
+                f"{name}: {arm_calibration.joints[name].rad_to_ticks(present[index])} ticks "
+                f"({np.degrees(present[index]):+.1f} deg) -> {arm_calibration.joints[name].rad_to_ticks(goal)} ticks "
+                f"({np.degrees(goal):+.1f} deg) at <= {rate} rad/s"
+            )
+        if not (mock or yes):
+            console.print(
+                "[bold red]The arm is about to MOVE.[/bold red] Hand near the power switch. Ctrl-C stops safely."
+            )
+            if not typer.confirm("Proceed?", default=False):
+                raise typer.Exit(code=1)
+        result = move_to(bus, arm_calibration, SafetyLimits(), clock, targets, rate_rad_s=rate)
+        end_ticks = arm_calibration.rad_to_ticks(result.end_rad)
+        console.print(
+            "done in "
+            + (f"{result.duration_s:.1f} s: " if not isinstance(clock, SimClock) else "virtual time: ")
+            + ", ".join(f"{n} at {end_ticks[bus.joints.index(n)]} ticks" for n in targets)
+            + ". Torque is ON, holding."
+        )
+    finally:
+        bus.close()
+
+
+@app.command()
 def release(
     port: PortOption = DEFAULT_PORT,
     calibration: CalibrationOption = None,

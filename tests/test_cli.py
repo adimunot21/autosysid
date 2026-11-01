@@ -254,3 +254,46 @@ def test_fit_behavior_load_dependent_deadband_needs_gravity_xml(tmp_path):
     )
     assert result.exit_code != 0
     assert not (tmp_path / "p.json").exists()
+
+
+# ---- move ----------------------------------------------------------------------------------------------------------
+
+
+def test_move_mock_reaches_the_tick_target_and_keeps_torque(tmp_path):
+    shutil.copy(MINI_ARM_XML, tmp_path / "arm.xml")
+    result = runner.invoke(
+        app, ["move", "--mock", "--xml", str(tmp_path / "arm.xml"), "--to-ticks", "shoulder_lift=2300", "--yes"]
+    )
+    assert result.exit_code == 0, result.output
+    assert "2300" in result.output and "holding" in result.output.lower()
+
+
+@pytest.mark.parametrize(
+    "spec", ["shoulder_lift", "shoulder_lift=abc", "shoulder_lift=9999", "wrist_roll=2000", "shoulder_lift=-5"]
+)
+def test_move_rejects_bad_targets_before_moving(tmp_path, spec):
+    shutil.copy(MINI_ARM_XML, tmp_path / "arm.xml")
+    result = runner.invoke(app, ["move", "--mock", "--xml", str(tmp_path / "arm.xml"), "--to-ticks", spec, "--yes"])
+    assert result.exit_code != 0
+    assert "Traceback" not in result.output
+
+
+def test_move_declined_at_the_prompt_moves_nothing(tmp_path, monkeypatch):
+    """The prompt is skipped under --mock, so give the command a mock bus through the real-hardware code path."""
+    from autosysid import pipeline as pipeline_module
+
+    shutil.copy(MINI_ARM_XML, tmp_path / "arm.xml")
+    opened = {}
+
+    def fake_open_bus(xml, mock, port, baudrate, calibration_path):
+        bus, calibration, clock = real_open_bus(xml, True, port, baudrate, calibration_path)
+        opened["bus"] = bus
+        return bus, calibration, clock
+
+    real_open_bus = pipeline_module.open_bus
+    monkeypatch.setattr(pipeline_module, "open_bus", fake_open_bus)
+    result = runner.invoke(
+        app, ["move", "--xml", str(tmp_path / "arm.xml"), "--to-ticks", "shoulder_lift=2300"], input="n\n"
+    )
+    assert result.exit_code == 1
+    assert not opened["bus"].torque_enabled, "declining must not energise the arm"
