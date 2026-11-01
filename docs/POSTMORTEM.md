@@ -155,3 +155,14 @@ fit: 2.55). The fit on poses 1-3 predicted d = 13.0 ticks here and fitting pose 
 poses together: delay 26.6 ms, tau 47.5 ms, d0 4.0 + d1 13.3 ticks, g0 -25.7 ticks (`results/shoulder_lift_5param_4poses.json`).
 Pose 4 is close in load to poses 1 and 3, so it does not separate the 5- from the 4-parameter model;
 the leave-pose-2-out result above (9.4 -> 4.8 ticks) is the evidence for d1.
+
+### Addendum 3 (2026-11-01): elbow_flex, three base poses
+
+Poses at 2028 / 1565 / 1312 ticks with the shoulder at about 2050-2100 (the elbow's gravity phase shifts one-for-one with the
+shoulder angle, so the shoulder was held fixed; `q_horiz = -178 deg` from the MJCF). Fitted deadband per pose:
+13.0 / 9.1 / 6.7 ticks at |cos| = 1.00 / 0.73 / 0.41; sag +16 / +11 / +6 ticks. Leave-one-pose-out (4-parameter shared d ->
+5-parameter d0 + d1|cos|): 4.48 -> 2.55, 2.32 -> 2.23, 4.19 -> 2.81 ticks. All three poses together:
+delay 16.0 ms, tau 55.6 ms, d0 3.5 + d1 9.1 ticks, g0 -16.3 ticks, 2.2 ticks per pose
+(`results/elbow_flex_5param_3poses.json`). Compared with shoulder_lift (d1 13.3, g0 -25.7) the elbow
+carries less load and has a smaller coefficient on both. The extended end of the elbow (2650 ticks with the shoulder
+upright) contacts the table; that pose is not in the data set.

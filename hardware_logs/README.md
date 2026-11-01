@@ -13,9 +13,10 @@ one folder per excited joint. `scripts/reproduce_postmortem.py` and `scripts/val
 | `shoulder_lift/pose3/` | `runs/hw/shoulder_lift_pose3b_s1` (scale 0.8), `_s2` (scale 0.8), 2026-11-01 | shoulder_lift, base pose 2581 ticks (+47 deg) with elbow folded to 1586 ticks to clear the table | no. An earlier pose-3 attempt (elbow at 0 deg) hit the table and was discarded. |
 | `shoulder_lift/pose4/` | `runs/hw/shoulder_lift_pose4_s1`, `_s2`, 2026-11-01 | shoulder_lift, base pose 1914 ticks (-13 deg), elbow/wrist as in poses 1-2; reached with `autosysid move` | no. Held out of the poses 1-3 fit. |
 | `elbow_flex/pose1/` | `runs/hw/elbow_flex_pose1_s1`, `_s2`, 2026-11-01 | elbow_flex, base pose 2028 ticks, shoulder 2052, wrist 2010, `--behavior-sweep --amplitude-scale 1.0` | no |
-| `elbow_flex/pose2/` | `runs/hw/elbow_flex_pose2_s1`, `_s2`, 2026-11-01 | elbow_flex, base pose 1565 ticks, shoulder 2077 | no. A third pose at 2650 ticks hit the table and was discarded. |
+| `elbow_flex/pose2/` | `runs/hw/elbow_flex_pose2_s1`, `_s2`, 2026-11-01 | elbow_flex, base pose 1565 ticks, shoulder 2077 | no |
+| `elbow_flex/pose3/` | `runs/hw/elbow_flex_pose3b_s1`, `_s2`, 2026-11-01 | elbow_flex, base pose 1312 ticks (-65 deg, folded up), reached with `autosysid move` | no. An earlier pose at 2650 ticks (extended) hit the table and was discarded. |
 
-`gripper` has no data yet; `elbow_flex` has two poses (the extended end hits the table with the shoulder upright); `shoulder_lift` has one base pose (a first stage-1 run at scale 0.5 barely moved the joint and was not kept). Recorded 12 V, default servo PID (P=16 I=0 D=32),
+`gripper` has no data yet; `shoulder_lift` has one base pose (a first stage-1 run at scale 0.5 barely moved the joint and was not kept). Recorded 12 V, default servo PID (P=16 I=0 D=32),
 Torque_Limit 70%, one arm. `record*.json` next to the logs is the recorder's own provenance (config, segment names).
 
 ## Adding a joint or a new base pose (arm supported, hand on the power switch)
