@@ -15,8 +15,9 @@ one folder per excited joint. `scripts/reproduce_postmortem.py` and `scripts/val
 | `elbow_flex/pose1/` | `runs/hw/elbow_flex_pose1_s1`, `_s2`, 2026-11-01 | elbow_flex, base pose 2028 ticks, shoulder 2052, wrist 2010, `--behavior-sweep --amplitude-scale 1.0` | no |
 | `elbow_flex/pose2/` | `runs/hw/elbow_flex_pose2_s1`, `_s2`, 2026-11-01 | elbow_flex, base pose 1565 ticks, shoulder 2077 | no |
 | `elbow_flex/pose3/` | `runs/hw/elbow_flex_pose3b_s1`, `_s2`, 2026-11-01 | elbow_flex, base pose 1312 ticks (-65 deg, folded up), reached with `autosysid move` | no. An earlier pose at 2650 ticks (extended) hit the table and was discarded. |
+| `gripper/pose1/` | `runs/hw/gripper_pose1_s1`, `_s2`, 2026-11-01 | gripper, base pose 2777 ticks (middle of range), `--behavior-sweep --amplitude-scale 1.0` (factor 0.5) | no |
 
-`gripper` has no data yet; `shoulder_lift` has one base pose (a first stage-1 run at scale 0.5 barely moved the joint and was not kept). Recorded 12 V, default servo PID (P=16 I=0 D=32),
+ `shoulder_lift` has one base pose (a first stage-1 run at scale 0.5 barely moved the joint and was not kept). Recorded 12 V, default servo PID (P=16 I=0 D=32),
 Torque_Limit 70%, one arm. `record*.json` next to the logs is the recorder's own provenance (config, segment names).
 
 ## Adding a joint or a new base pose (arm supported, hand on the power switch)
