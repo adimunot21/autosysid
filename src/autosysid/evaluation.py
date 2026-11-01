@@ -60,6 +60,7 @@ class JointEvaluation:
     errors_ticks: dict[str, float]
     behavior_3param: BehaviorParams
     behavior_4param: BehaviorParams
+    behavior_5param: BehaviorParams | None  # only when load_dependent_deadband=True
     stock_delay_s: float
     times: np.ndarray  # concatenated held-out time axis (segments laid end to end)
     measured: np.ndarray
@@ -94,13 +95,30 @@ def _pooled(per_log_errors: list[tuple[np.ndarray, np.ndarray]]) -> float:
     )
 
 
-def evaluate_joint(model: mujoco.MjModel, logs: Sequence[RawLog], joint: str, q_horiz_rad: float | None = None):
-    """Fit on the fit logs, score every model on the held-out logs. See the module docstring for the models."""
+def evaluate_joint(
+    model: mujoco.MjModel,
+    logs: Sequence[RawLog],
+    joint: str,
+    q_horiz_rad: float | None = None,
+    load_dependent_deadband: bool = False,
+):
+    """Fit on the fit logs, score every model on the held-out logs. See the module docstring for the models.
+
+    `q_horiz_rad` switches the 4-parameter model to `g0*cos(q - q_horiz)`; `load_dependent_deadband` (needs it, and
+    logs from several base poses) adds the 5-parameter model `d(q) = d0 + d1*|cos(q - q_horiz)|`. The wrapped MJCF
+    uses the richest model that was fitted.
+    """
     fit_logs, held_logs = split_logs(logs, joint)
     ideal_model = ideal_actuator_model(model)
 
     fit_3 = fit_behavior(fit_logs, joint, fit_gravity=False).params
     fit_4 = fit_behavior(fit_logs, joint, fit_gravity=True, q_horiz_rad=q_horiz_rad).params
+    fit_5 = (
+        fit_behavior(fit_logs, joint, q_horiz_rad=q_horiz_rad, fit_deadband_gravity=True).params
+        if load_dependent_deadband
+        else None
+    )
+    wrapped_params = fit_5 or fit_4
 
     def stock_error(delay_s: float, on: Sequence[RawLog]) -> float:
         return _pooled(
@@ -117,6 +135,7 @@ def evaluate_joint(model: mujoco.MjModel, logs: Sequence[RawLog], joint: str, q_
         "stock_plus_delay",
         "behavior_3param",
         "behavior_4param",
+        *(("behavior_5param",) if fit_5 else ()),
         "wrapped_mjcf",
     )
     collected: dict[str, list[np.ndarray]] = {name: [] for name in names}
@@ -131,8 +150,10 @@ def evaluate_joint(model: mujoco.MjModel, logs: Sequence[RawLog], joint: str, q_
             "stock_plus_delay": mjcf_prediction(model, {}, log, joint, stock_delay),
             "behavior_3param": simulate(fit_3, log.times, target, measured[0]),
             "behavior_4param": simulate(fit_4, log.times, target, measured[0]),
-            "wrapped_mjcf": mjcf_prediction(ideal_model, {joint: fit_4}, log, joint),
+            "wrapped_mjcf": mjcf_prediction(ideal_model, {joint: wrapped_params}, log, joint),
         }
+        if fit_5:
+            predictions["behavior_5param"] = simulate(fit_5, log.times, target, measured[0])
         for name, values in predictions.items():
             collected[name].append(values)
         measured_parts.append(measured)
@@ -146,6 +167,7 @@ def evaluate_joint(model: mujoco.MjModel, logs: Sequence[RawLog], joint: str, q_
         errors_ticks={name: rms_error_ticks(values, measured_all) for name, values in joined.items()},
         behavior_3param=fit_3,
         behavior_4param=fit_4,
+        behavior_5param=fit_5,
         stock_delay_s=stock_delay,
         times=np.concatenate(time_parts),
         measured=measured_all,

@@ -1,4 +1,124 @@
 {
+  "elbow_flex": {
+    "heldout_stages": [
+      "stage2_steps_elbow_flex",
+      "stage2_steps_elbow_flex",
+      "stage2_steps_elbow_flex"
+    ],
+    "errors_ticks": {
+      "hold_still": 83.29621728757117,
+      "command_as_position": 25.251139247755557,
+      "stock_mjcf": 23.55591245767355,
+      "stock_plus_delay": 13.823877415015707,
+      "behavior_3param": 12.01759086768859,
+      "behavior_4param": 4.277037026224523,
+      "behavior_5param": 3.183399784885593,
+      "wrapped_mjcf": 3.724450648269279,
+      "mujoco_sysid": null
+    },
+    "behavior_3param": {
+      "delay_s": 0.0173787519786231,
+      "tau_s": 0.05186661747522107,
+      "deadband_rad": 0.014575739552012025,
+      "gravity_rad": 0.0,
+      "q_horiz_rad": null,
+      "deadband_gravity_rad": 0.0
+    },
+    "behavior_4param": {
+      "delay_s": 0.010898990258930605,
+      "tau_s": 0.05427052585443026,
+      "deadband_rad": 0.01617730887179039,
+      "gravity_rad": -0.02518936074422751,
+      "q_horiz_rad": -3.109240433370952,
+      "deadband_gravity_rad": 0.0
+    },
+    "behavior_5param": {
+      "delay_s": 0.010961274089994486,
+      "tau_s": 0.05497445170510436,
+      "deadband_rad": 0.006885341126203861,
+      "gravity_rad": -0.025137421328821862,
+      "q_horiz_rad": -3.109240433370952,
+      "deadband_gravity_rad": 0.012730363048977653
+    },
+    "stock_delay_s": 0.09
+  },
+  "gripper": {
+    "heldout_stages": [
+      "stage2_steps_gripper"
+    ],
+    "errors_ticks": {
+      "hold_still": 71.67178243115895,
+      "command_as_position": 17.55411740390616,
+      "stock_mjcf": 16.160464036275474,
+      "stock_plus_delay": 5.763316554930278,
+      "behavior_3param": 2.4817754853738516,
+      "behavior_4param": 2.4205907522930703,
+      "wrapped_mjcf": 2.58111728483128,
+      "mujoco_sysid": null
+    },
+    "behavior_3param": {
+      "delay_s": 0.009712514035920933,
+      "tau_s": 0.06142248974856471,
+      "deadband_rad": 0.007193274351522311,
+      "gravity_rad": 0.0,
+      "q_horiz_rad": null,
+      "deadband_gravity_rad": 0.0
+    },
+    "behavior_4param": {
+      "delay_s": 0.009705076925951205,
+      "tau_s": 0.061526574006089574,
+      "deadband_rad": 0.007159682584595547,
+      "gravity_rad": -0.0003764397212032927,
+      "q_horiz_rad": null,
+      "deadband_gravity_rad": 0.0
+    },
+    "behavior_5param": null,
+    "stock_delay_s": 0.08
+  },
+  "shoulder_lift": {
+    "heldout_stages": [
+      "stage2_steps_shoulder_lift",
+      "stage2_steps_shoulder_lift",
+      "stage2_steps_shoulder_lift",
+      "stage2_steps_shoulder_lift"
+    ],
+    "errors_ticks": {
+      "hold_still": 78.80987860955335,
+      "command_as_position": 29.20631647774895,
+      "stock_mjcf": 27.804503364694554,
+      "stock_plus_delay": 19.74260822445645,
+      "behavior_3param": 21.37928350636985,
+      "behavior_4param": 5.776240163917973,
+      "behavior_5param": 4.497321264760655,
+      "wrapped_mjcf": 4.7225175204599115,
+      "mujoco_sysid": null
+    },
+    "behavior_3param": {
+      "delay_s": 0.03729924862308636,
+      "tau_s": 0.017976513460407486,
+      "deadband_rad": 0.026851634606746423,
+      "gravity_rad": 0.0,
+      "q_horiz_rad": null,
+      "deadband_gravity_rad": 0.0
+    },
+    "behavior_4param": {
+      "delay_s": 0.0247821812366718,
+      "tau_s": 0.04081461120255301,
+      "deadband_rad": 0.020420446137094796,
+      "gravity_rad": -0.038260241359507605,
+      "q_horiz_rad": -2.5157539789021914,
+      "deadband_gravity_rad": 0.0
+    },
+    "behavior_5param": {
+      "delay_s": 0.02440537794540869,
+      "tau_s": 0.043709594038047944,
+      "deadband_rad": 0.006009583650991272,
+      "gravity_rad": -0.0385300293826582,
+      "q_horiz_rad": -2.5157539789021914,
+      "deadband_gravity_rad": 0.021681318130605098
+    },
+    "stock_delay_s": 0.09
+  },
   "shoulder_pan": {
     "heldout_stages": [
       "stage2_steps_shoulder_pan"
@@ -18,15 +138,18 @@
       "tau_s": 0.05021477616363739,
       "deadband_rad": 0.006125887260670177,
       "gravity_rad": 0.0,
-      "q_horiz_rad": null
+      "q_horiz_rad": null,
+      "deadband_gravity_rad": 0.0
     },
     "behavior_4param": {
       "delay_s": 0.0232934422987526,
       "tau_s": 0.05037972648568422,
       "deadband_rad": 0.006064449022502056,
       "gravity_rad": -0.0006799003224338515,
-      "q_horiz_rad": null
+      "q_horiz_rad": null,
+      "deadband_gravity_rad": 0.0
     },
+    "behavior_5param": null,
     "stock_delay_s": 0.08
   },
   "wrist_flex": {
@@ -48,15 +171,18 @@
       "tau_s": 0.06473688261677883,
       "deadband_rad": 0.009066235952893402,
       "gravity_rad": 0.0,
-      "q_horiz_rad": null
+      "q_horiz_rad": null,
+      "deadband_gravity_rad": 0.0
     },
     "behavior_4param": {
       "delay_s": 0.0041920089614174,
       "tau_s": 0.06281971334794031,
       "deadband_rad": 0.00960392206830924,
       "gravity_rad": 0.006833398381278197,
-      "q_horiz_rad": null
+      "q_horiz_rad": null,
+      "deadband_gravity_rad": 0.0
     },
+    "behavior_5param": null,
     "stock_delay_s": 0.08
   },
   "wrist_roll": {
@@ -78,15 +204,18 @@
       "tau_s": 0.06666310109849986,
       "deadband_rad": 0.006926424314986286,
       "gravity_rad": 0.0,
-      "q_horiz_rad": null
+      "q_horiz_rad": null,
+      "deadband_gravity_rad": 0.0
     },
     "behavior_4param": {
       "delay_s": 0.005002824925179736,
       "tau_s": 0.06610085167768667,
       "deadband_rad": 0.0070003531597476664,
       "gravity_rad": 0.0008616971518294012,
-      "q_horiz_rad": null
+      "q_horiz_rad": null,
+      "deadband_gravity_rad": 0.0
     },
+    "behavior_5param": null,
     "stock_delay_s": 0.08
   }
 }

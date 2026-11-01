@@ -166,3 +166,22 @@ delay 16.0 ms, tau 55.6 ms, d0 3.5 + d1 9.1 ticks, g0 -16.3 ticks, 2.2 ticks per
 (`results/elbow_flex_5param_3poses.json`). Compared with shoulder_lift (d1 13.3, g0 -25.7) the elbow
 carries less load and has a smaller coefficient on both. The extended end of the elbow (2650 ticks with the shoulder
 upright) contacts the table; that pose is not in the data set.
+
+### Addendum 4 (2026-11-01): all six joints, one table
+
+`python scripts/reproduce_postmortem.py` regenerates `results/comparison.md` from `hardware_logs/` (about 4 minutes). Held-out RMS
+position error in ticks; wrapped = fitted model in front of an ideal-actuator copy of the stock MJCF:
+
+| Joint | Stock MJCF | Stock + best delay | Best behavioral model | Wrapped MJCF | Stock / wrapped |
+|---|---|---|---|---|---|
+| shoulder_pan | 16.7 | 4.6 | 2.36 | 2.56 | 6.5x |
+| shoulder_lift | 27.8 | 19.7 | 4.50 (5-param) | 4.72 | 5.9x |
+| elbow_flex | 23.6 | 13.8 | 3.18 (5-param) | 3.72 | 6.3x |
+| wrist_flex | 16.9 | 8.0 | 2.15 | 2.54 | 6.7x |
+| wrist_roll | 16.2 | 5.8 | 2.14 | 2.54 | 6.4x |
+| gripper | 16.2 | 5.8 | 2.42 | 2.58 | 6.3x |
+
+The >4x target holds on every joint against the stock MJCF. Against a stock model with a fitted delay the margin is 1.8-4.2x, and it
+is largest on the gravity-loaded joints (3.7x, 4.2x), where gravity sag and a load-dependent deadband are what the delay cannot absorb.
+Held out here means the stage-2 steps segment of each joint and base pose; a fresh stage-3 multisine is still to be recorded.
+Not yet done: wrist_flex at several base poses, and the multi-joint trajectory check (`scripts/validate_wrapper.py --trajectory`).

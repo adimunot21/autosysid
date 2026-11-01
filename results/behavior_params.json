@@ -1,23 +1,50 @@
 {
+  "elbow_flex": {
+    "delay_s": 0.015985185618513892,
+    "tau_s": 0.05558970431105225,
+    "deadband_rad": 0.005390266921498238,
+    "gravity_rad": -0.024955306381023896,
+    "q_horiz_rad": -3.109240433370952,
+    "deadband_gravity_rad": 0.013960463314446293
+  },
+  "gripper": {
+    "delay_s": 0.013561485569425881,
+    "tau_s": 0.06277748246516493,
+    "deadband_rad": 0.006718748634988069,
+    "gravity_rad": -0.000539227447465605,
+    "q_horiz_rad": null,
+    "deadband_gravity_rad": 0.0
+  },
+  "shoulder_lift": {
+    "delay_s": 0.026870844579327393,
+    "tau_s": 0.047404861912994666,
+    "deadband_rad": 0.005613699695033263,
+    "gravity_rad": -0.03870617360528187,
+    "q_horiz_rad": -2.5157539789021914,
+    "deadband_gravity_rad": 0.02052864003619507
+  },
   "shoulder_pan": {
     "delay_s": 0.027245042608237926,
     "tau_s": 0.051514790233772895,
     "deadband_rad": 0.005652111021764646,
     "gravity_rad": -0.0006758379445711941,
-    "q_horiz_rad": null
+    "q_horiz_rad": null,
+    "deadband_gravity_rad": 0.0
   },
   "wrist_flex": {
     "delay_s": 0.008800667935035787,
     "tau_s": 0.06310017705554737,
     "deadband_rad": 0.009380965546672846,
     "gravity_rad": 0.006829705128608643,
-    "q_horiz_rad": null
+    "q_horiz_rad": null,
+    "deadband_gravity_rad": 0.0
   },
   "wrist_roll": {
     "delay_s": 0.008623485698219675,
     "tau_s": 0.06740403504831625,
     "deadband_rad": 0.006635900112890214,
     "gravity_rad": 0.0008655491179498693,
-    "q_horiz_rad": null
+    "q_horiz_rad": null,
+    "deadband_gravity_rad": 0.0
   }
 }
