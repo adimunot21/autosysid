@@ -1,0 +1,36 @@
+{
+  "config": {
+    "port": "/dev/so101-follower",
+    "baudrate": 1000000,
+    "control_rate_hz": 100.0,
+    "joints": [
+      "elbow_flex"
+    ],
+    "amplitude_scale": 1.0,
+    "safety": {
+      "soft_limit_fraction": 0.8,
+      "max_goal_rate_rad_s": 2.0,
+      "max_goal_accel_rad_s2": 400.0,
+      "torque_limit_fraction": 0.7,
+      "max_temperature_c": 55,
+      "min_voltage_v": 10.5,
+      "slow_fault_samples": 5,
+      "max_tracking_error_rad": 0.5,
+      "max_loop_jitter_s": 0.02,
+      "comm_timeout_s": 0.1,
+      "safe_stop_rate_rad_s": 0.3,
+      "release_torque_at_end": false
+    },
+    "seed": 0,
+    "joint_amplitude_factors": {
+      "elbow_flex": 0.6
+    }
+  },
+  "stages": [
+    1
+  ],
+  "segments": [
+    "stage1_step_elbow_flex",
+    "stage1_ramp_elbow_flex"
+  ]
+}
