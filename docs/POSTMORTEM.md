@@ -148,3 +148,10 @@ earlier +47 deg attempt with the elbow straight hit the table and was discarded)
   hits its zero bound when both training poses are heavily loaded; a fourth pose near |cos| = 0 would constrain it.
 - Fit with `autosysid fit-behavior ... --gravity-xml scene.xml --load-dependent-deadband`.
 - Delay (20-38 ms) and tau (33-53 ms) remain loosely identified across poses and splits.
+
+**Held-out pose (-13 deg, |cos| = 0.67, reached with `autosysid move`).** Fit on poses 1-3 only, no refit: 3.01 ticks for the
+5-parameter model (4-parameter shared-d: 3.19; 3-parameter, no gravity: 15.95; target as position: 24.9; pose 4's own
+fit: 2.55). The fit on poses 1-3 predicted d = 13.0 ticks here and fitting pose 4 alone gives 12.6. On all four
+poses together: delay 26.6 ms, tau 47.5 ms, d0 4.0 + d1 13.3 ticks, g0 -25.7 ticks (`results/shoulder_lift_5param_4poses.json`).
+Pose 4 is close in load to poses 1 and 3, so it does not separate the 5- from the 4-parameter model;
+the leave-pose-2-out result above (9.4 -> 4.8 ticks) is the evidence for d1.
